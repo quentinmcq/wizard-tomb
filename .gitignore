@@ -1,0 +1,46 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+._*
+
+# Xcode — build & DerivedData
+build/
+DerivedData/
+*.xcodeproj/xcuserdata/
+*.xcodeproj/project.xcworkspace/xcuserdata/
+*.xcworkspace/xcuserdata/
+*.xcuserstate
+
+# Xcode — local user prefs / breakpoints
+*.xcuserdatad/
+xcuserdata/
+
+# Swift Package Manager local resolution
+.build/
+Packages/
+*.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/configuration/
+# Package.resolved est commité volontairement (verrouille les versions des
+# dépendances InkSwift / JXKit pour que les builds soient reproductibles).
+
+# Carthage / CocoaPods (au cas où on en ajoute un jour)
+Carthage/Build/
+Pods/
+
+# Outils
+*.swp
+*.bak
+*.orig
+*.rej
+*.tmp
+
+# IDE
+.idea/
+.vscode/
+
+# Logs
+*.log
+
+# Claude Code (worktrees, sessions, etc. — locaux à la machine)
+.claude/

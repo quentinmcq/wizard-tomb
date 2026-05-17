@@ -1,14 +1,7 @@
-//
-//  tombApp.swift
-//  tomb
-//
-//  Created by Quentin Macq on 15/05/2026.
-//
-
 import SwiftUI
 
 @main
-struct tombApp: App {
+struct TombApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
