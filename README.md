@@ -82,7 +82,7 @@ En Release, le fichier est lu directement depuis le bundle.
 
 ### Sauvegarde
 
-`UserDefaults`, clé `tomb.save.v10`. Stocke le `storyState` d'InkSwift, le `PlayerState`, les choix courants, l'historique des messages et le score. La clé est versionnée : à chaque changement de format on l'incrémente pour invalider proprement les anciennes saves.
+`UserDefaults`, clé `tomb.save.v11`. Stocke le `storyState` d'InkSwift, le `PlayerState`, les choix courants, l'historique des messages et le score. La clé est versionnée : à chaque changement de format (renommage massif de knots Ink, refonte de `PlayerState`…) on l'incrémente pour invalider proprement les anciennes saves.
 
 ## Crédits
 

@@ -21,9 +21,10 @@ struct EffectBurstView: View {
 
     var body: some View {
         VStack(spacing: 10) {
-            Image(systemName: burst.icon)
-                .font(.system(size: 40, weight: .semibold))
-                .foregroundColor(burst.tint)
+            // Theme.icon(...) intercepte "heart.fill" pour utiliser l'asset
+            // pixel-art ; le shadow doré reste appliqué dans tous les cas
+            // pour l'effet "ça-brille" du gain.
+            Theme.icon(burst.icon, size: 40, color: burst.tint)
                 .shadow(color: burst.tint.opacity(0.55), radius: 8, x: 0, y: 0)
 
             Text(burst.title)
@@ -42,14 +43,21 @@ struct EffectBurstView: View {
         .padding(.vertical, 22)
         .padding(.horizontal, 30)
         .background(
+            // Fond complètement opaque pour ne plus laisser transparaître
+            // le texte du parchemin derrière (la popin paraissait aplatie
+            // contre la page sinon).
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(Theme.parchmentLight.opacity(0.95))
+                .fill(Theme.parchmentLight)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .stroke(burst.tint.opacity(0.75), lineWidth: 1.6)
         )
-        .shadow(color: burst.tint.opacity(0.35), radius: 14, x: 0, y: 6)
+        // Double ombre : une vraie drop shadow ink (décollée du fond) + un
+        // halo tinté plus large pour l'effet "ça brille". L'ink détache la
+        // popin du parchemin, la teinte ajoute la magie.
+        .shadow(color: Theme.ink.opacity(0.55), radius: 18, x: 0, y: 10)
+        .shadow(color: burst.tint.opacity(0.45), radius: 22, x: 0, y: 0)
         .scaleEffect(appeared ? 1.0 : 0.6)
         .opacity(appeared ? 1.0 : 0)
         .onAppear {

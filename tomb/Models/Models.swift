@@ -16,6 +16,11 @@ struct PlayerState: Codable {
     var luckMax: Int
     var gold: Int = 10
     var items: Set<String> = []
+    /// Arme actuellement portée (id d'item dans `ItemCatalog`, doit avoir un
+    /// `weapon` non-nil). Le bonus de cette arme est appliqué sur les stats
+    /// `skill` / `luck` tant qu'elle est équipée ; le retirer remet les
+    /// stats à leur valeur de base. Nil = combat à mains nues / sans arme.
+    var equippedWeapon: String? = nil
 
     var isDead: Bool { stamina <= 0 }
 
@@ -53,21 +58,28 @@ struct Choice: Identifiable, Codable {
     /// item, hidden path, moral fork). Driven by an Ink tag `# special` on
     /// the choice. Affects styling so the player notices it.
     let isSpecial: Bool
+    /// Coût en pièces d'or de l'option (encodé dans le .ink via le marker
+    /// trailing `[$N]`, ex. `[Payer 5 pièces [$5]]`). `nil` = option non
+    /// payante. Quand le joueur n'a pas assez, l'option reste visible mais
+    /// est rendue grisée et non cliquable côté UI.
+    let priceGold: Int?
 
-    init(id: Int, text: String, isSpecial: Bool = false) {
+    init(id: Int, text: String, isSpecial: Bool = false, priceGold: Int? = nil) {
         self.id = id
         self.text = text
         self.isSpecial = isSpecial
+        self.priceGold = priceGold
     }
 
-    // Manual Codable so older saves (without isSpecial) still decode.
-    enum CodingKeys: String, CodingKey { case id, text, isSpecial }
+    // Manual Codable so older saves (without isSpecial / priceGold) still decode.
+    enum CodingKeys: String, CodingKey { case id, text, isSpecial, priceGold }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         self.id = try c.decode(Int.self, forKey: .id)
         self.text = try c.decode(String.self, forKey: .text)
         self.isSpecial = try c.decodeIfPresent(Bool.self, forKey: .isSpecial) ?? false
+        self.priceGold = try c.decodeIfPresent(Int.self, forKey: .priceGold)
     }
 }
 
@@ -109,13 +121,23 @@ struct Enemy: Equatable {
     var skill: Int
     var stamina: Int
     let staminaMax: Int
+    /// Bonus de dégâts ajouté à chaque coup encaissé par le joueur. Sert à
+    /// donner une « aptitude » aux ennemis (griffes acérées du lycanthrope,
+    /// poigne de pierre du gardien…). 0 = ennemi standard (2 dégâts/coup).
+    let damageBonus: Int
+    /// Phrase courte décrivant l'aptitude, affichée sous la fiche d'ennemi
+    /// dans la carte de combat. Nil = pas d'aptitude particulière.
+    let abilityNote: String?
 
-    init(id: String, name: String, skill: Int, stamina: Int) {
+    init(id: String, name: String, skill: Int, stamina: Int,
+         damageBonus: Int = 0, abilityNote: String? = nil) {
         self.id = id
         self.name = name
         self.skill = skill
         self.stamina = stamina
         self.staminaMax = stamina
+        self.damageBonus = damageBonus
+        self.abilityNote = abilityNote
     }
 }
 
@@ -170,12 +192,46 @@ enum LuckPromptKind: String, Equatable {
 
 /// Identifié par le tag `# outcome: <kind>` posé sur chaque knot de fin.
 /// Sert au calcul du score et à l'affichage d'un grade thématique.
-enum FinalOutcome: String, Codable {
+enum FinalOutcome: String, Codable, CaseIterable {
     case honour         // fin_honneur
     case destruction    // fin_destruction
     case dark           // fin_sombre
     case transcendence  // fin_transcendance
     case death          // mort
+
+    /// Libellé affiché dans l'écran « Tes aventures ».
+    var title: String {
+        switch self {
+        case .honour:        return "La voie de l'honneur"
+        case .destruction:   return "Le sortilège brisé"
+        case .dark:          return "L'ombre qui s'allonge"
+        case .transcendence: return "Le passage du sage"
+        case .death:         return "Une épitaphe oubliée"
+        }
+    }
+
+    /// Court résumé (montré sous le titre une fois la fin découverte).
+    var blurb: String {
+        switch self {
+        case .honour:        return "Tu as rapporté l'amulette à Aldwin. Le village respire."
+        case .destruction:   return "Tu as brisé l'amulette aux pieds d'Aldwin. Mortimer s'éteint pour de bon."
+        case .dark:          return "Tu as quitté Roncebrune avec l'amulette. Quelque part, une ombre nouvelle s'allonge."
+        case .transcendence: return "Tu as scellé Mortimer par les trois forces et offert l'amulette au ciel."
+        case .death:         return "La pierre froide du tombeau a accueilli ton dos."
+        }
+    }
+
+    /// Indice montré quand la fin n'a pas encore été atteinte. Léger spoiler-
+    /// free : juste un teaser pour pousser à explorer.
+    var hint: String {
+        switch self {
+        case .honour:        return "Rends ce qu'on t'a confié."
+        case .destruction:   return "Le sage de la forêt savait. Brise ce qui retient."
+        case .dark:          return "Ce qui brille n'appartient plus à personne."
+        case .transcendence: return "Trois protections, trois forces — apporte-les toutes."
+        case .death:         return "Le tombeau finit par avaler ceux qui le sous-estiment."
+        }
+    }
 }
 
 // MARK: - Difficulté
@@ -183,7 +239,7 @@ enum FinalOutcome: String, Codable {
 enum Difficulty: String, Codable, CaseIterable {
     case adventurer  // normal
     case veteran     // stats de départ -1, score x1.25
-    case legend      // stats de départ -2, ennemis +1 Habileté, score x1.5
+    case legend      // stats de départ -1, ennemis +1 Habileté, score x1.5
 
     var title: String {
         switch self {
@@ -197,16 +253,20 @@ enum Difficulty: String, Codable, CaseIterable {
         switch self {
         case .adventurer: return "Tirage classique. Recommandé pour une première aventure."
         case .veteran:    return "Tu perds 1 point sur chacune de tes statistiques de départ."
-        case .legend:     return "Tu perds 2 points sur chacune de tes stats. Les ennemis gagnent +1 Habileté."
+        case .legend:     return "Tu perds 1 point sur chacune de tes stats. Les ennemis gagnent +1 Habileté."
         }
     }
 
     /// Modificateur appliqué à chaque stat tirée (Habileté, Endurance, Chance).
+    /// Légende reste à -1 (au lieu de -2 jusqu'ici) : la pénalité cumulée
+    /// avec `enemySkillBonus = +1` aboutissait à un écart effectif de -3 vs
+    /// Aventurier, ce qui rendait les boss limite-injouables même avec un
+    /// run optimisé. À -1, l'écart effectif reste à -2 — sévère mais fair.
     var statPenalty: Int {
         switch self {
         case .adventurer: return 0
         case .veteran:    return -1
-        case .legend:     return -2
+        case .legend:     return -1
         }
     }
 

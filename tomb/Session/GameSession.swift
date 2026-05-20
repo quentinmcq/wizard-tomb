@@ -59,7 +59,8 @@ final class GameSession: ObservableObject {
     /// Central burst card shown for major effects (item gain, permanent
     /// bonus). Auto-dismisses after ~1.5s.
     @Published var effectBurst: EffectBurst? = nil
-    private var burstTask: Task<Void, Never>? = nil
+    // (Anciennement `burstTask` — remplacé par `burstQueue` + `drainBurstQueue`
+    // pour gérer plusieurs effets enchaînés dans un même tour.)
 
     /// Overlay des jets de Chance narratifs (pièges, livre maudit, etc.).
     /// Auto-dismiss après ~3.5s.
@@ -97,13 +98,67 @@ final class GameSession: ObservableObject {
     /// Trailing marker placed in adventure.ink on conditional / notable
     /// choices. Stripped before display and surfaced as `Choice.isSpecial`.
     private static let specialMarker = " ★"
+
+    /// Regex pour le marker de coût en or `($5)` en fin de texte de choix.
+    /// Les parenthèses sont préférées aux crochets parce que Ink utilise
+    /// déjà `[...]` pour délimiter le texte de choix — des crochets nichés
+    /// font planter le parser. Capture le nombre, qu'on remonte ensuite
+    /// dans `Choice.priceGold`.
+    private static let goldPriceRegex = #/\s*\(\$(\d+)\)\s*$/#
+
+    /// Parse un texte de choix Ink brut : extrait les markers `★` (special)
+    /// et `[$N]` (coût en or), nettoie le texte affiché, renvoie le `Choice`.
+    /// Centralisé ici pour éviter de répéter la logique dans `advance()`.
+    private static func parseChoice(rawText: String, index: Int) -> Choice {
+        var text = rawText
+        var price: Int? = nil
+
+        if let match = text.firstMatch(of: goldPriceRegex) {
+            price = Int(match.output.1)
+            text.removeSubrange(match.range)
+        }
+
+        var isSpecial = false
+        if text.hasSuffix(specialMarker) {
+            text = String(text.dropLast(specialMarker.count))
+            isSpecial = true
+        }
+
+        text = text.trimmingCharacters(in: .whitespaces)
+        return Choice(id: index, text: text, isSpecial: isSpecial, priceGold: price)
+    }
     /// Knot to jump to on victory for the in-progress combat.
     private var pendingBattleVictoryPath: String? = nil
+
+    /// Fins déjà atteintes par le joueur (persistées entre les parties).
+    /// Permet d'afficher l'écran « Tes aventures » avec les fins découvertes
+    /// vs encore mystérieuses.
+    @Published var discoveredEndings: Set<FinalOutcome> = []
+
+    /// Ennemis déjà vaincus (persistés). Alimente le bestiaire.
+    @Published var defeatedEnemies: Set<String> = []
+
+    /// Hauts faits débloqués (persistés). Alimente l'écran AchievementsView
+    /// et déclenche des bursts à chaque déblocage.
+    @Published var unlockedAchievements: Set<String> = []
+
+    /// Compteur de potions/herbes consommées sur la partie en cours. Sert
+    /// au haut fait « Iron-man ». Reset à zéro sur new game.
+    @Published var potionsUsedThisRun: Int = 0
+
+    /// Compteur incrémenté à chaque pickup d'un item consommable. Le HUD
+    /// observe le changement via `.onChange` pour faire pulser le bouton
+    /// inventaire — façon « ding, regarde ce que tu viens de ranger ». La
+    /// valeur en elle-même n'a pas de sens, seul le delta importe.
+    @Published var inventoryPulse: Int = 0
 
     // MARK: - Init
 
     init() {
         player = PlayerState.rolled()
+        discoveredEndings = Self.loadDiscoveredEndings()
+        defeatedEnemies = Self.loadDefeatedEnemies()
+        unlockedAchievements = Self.loadAchievements()
         // No auto-load. MenuView decides via resume() or startNewGame().
     }
 
@@ -211,6 +266,7 @@ final class GameSession: ObservableObject {
         didFailToLoad = false
         battlesWon = 0
         battlesFled = 0
+        potionsUsedThisRun = 0
         currentChapter = .village
         finalOutcome = nil
         // Fresh JS context (see also restart()).
@@ -354,6 +410,7 @@ final class GameSession: ObservableObject {
 
     func resolveBattle(_ outcome: BattleOutcome) {
         let victoryPath = pendingBattleVictoryPath
+        let enemyId = pendingBattle?.enemy.id
         pendingBattle = nil
         pendingBattleVictoryPath = nil
         AmbientAudio.shared.exitBattle()
@@ -361,6 +418,7 @@ final class GameSession: ObservableObject {
         switch outcome {
         case .victory:
             battlesWon += 1
+            if let enemyId { recordDefeatedEnemy(enemyId) }
             if let path = victoryPath {
                 story.moveToKnitStitch(path, stitch: nil)
             }
@@ -389,6 +447,161 @@ final class GameSession: ObservableObject {
         hasStarted = false
         isCreatingCharacter = false
         characterRoll = nil
+    }
+
+    // MARK: - Items consommables & équipement
+
+    /// Utilise un item du sac (potion, herbes…). L'effet est appliqué et
+    /// l'item disparaît de l'inventaire. Le `has_<id>` côté Ink est repassé
+    /// à 0 pour qu'un choix conditionnel ne propose plus l'item.
+    func useItem(_ itemId: String) {
+        guard let info = ItemCatalog.all[itemId],
+              let effect = info.consumable else { return }
+        guard player.items.contains(itemId) else { return }
+        guard !isEnded else { return }
+        // En combat : seulement pendant `.awaitingAction` (entre les rounds,
+        // pas pendant un prompt de Chance). Hors combat : toujours OK.
+        if let battle = pendingBattle, battle.phase != .awaitingAction {
+            return
+        }
+        // Pas de gaspillage : on bloque l'usage d'un soin à PV pleins ou
+        // d'un restore de Chance à Chance pleine. L'UI gris déjà le bouton,
+        // c'est juste un garde-fou en plus.
+        guard isUseful(effect: effect) else { return }
+
+        var msg: EventMessage
+        switch effect {
+        case .heal(let n):
+            let before = player.stamina
+            player.stamina = min(player.stamina + n, player.staminaMax)
+            let gained = player.stamina - before
+            msg = EventMessage(
+                text: "Tu utilises : \(info.name). +\(gained) Endurance.",
+                kind: .heal
+            )
+            AmbientAudio.shared.play(.heal)
+        case .restoreLuck:
+            player.luck = player.luckMax
+            msg = EventMessage(
+                text: "Tu utilises : \(info.name). Chance ramenée au maximum.",
+                kind: .lucky
+            )
+            AmbientAudio.shared.play(.lucky)
+        case .boostSkillNextAttack(let n):
+            pendingBattle?.playerSkillBonus += n
+            pendingBattle?.log.append(BattleLogEntry(
+                text: "Tu utilises : \(info.name). +\(n) Habileté au prochain coup.",
+                kind: .info
+            ))
+            msg = EventMessage(
+                text: "Tu utilises : \(info.name). +\(n) Habileté au prochain coup.",
+                kind: .info
+            )
+            AmbientAudio.shared.play(.lucky)
+        case .weakenEnemyNextAttack(let n):
+            pendingBattle?.enemySkillPenalty += n
+            let enemyName = pendingBattle?.enemy.name ?? "L'ennemi"
+            pendingBattle?.log.append(BattleLogEntry(
+                text: "Tu utilises : \(info.name). \(enemyName) perd \(n) Habileté pour le prochain round.",
+                kind: .lucky
+            ))
+            msg = EventMessage(
+                text: "Tu utilises : \(info.name). \(enemyName) perd \(n) Habileté.",
+                kind: .lucky
+            )
+            AmbientAudio.shared.play(.lucky)
+        }
+
+        player.items.remove(itemId)
+        story.setVariable("has_\(itemId)", to: 0)
+        // Compteur de potions : on ne compte que les soins/restores "vrais"
+        // pour l'achievement Iron-man. Les bonus combat à usage unique
+        // n'entrent pas dans le décompte.
+        if case .heal = effect { potionsUsedThisRun += 1 }
+        if case .restoreLuck = effect { potionsUsedThisRun += 1 }
+        lastMessages = [msg]
+        saveCurrentState()
+        checkAchievements()
+    }
+
+    /// Vrai si appliquer cet effet va réellement changer l'état du joueur
+    /// (par opposition à un soin sur PV pleins ou un restore de Chance déjà
+    /// au max — l'objet serait gâché pour rien). Les effets de combat ne
+    /// sont "utiles" que si on est effectivement en combat.
+    func isUseful(effect: ConsumableEffect) -> Bool {
+        switch effect {
+        case .boostSkillNextAttack, .weakenEnemyNextAttack:
+            return pendingBattle != nil
+        case .heal:
+            return player.stamina < player.staminaMax
+        case .restoreLuck:
+            return player.luck < player.luckMax
+        }
+    }
+
+    /// Équipe une arme. Si une arme est déjà équipée, son bonus est rendu
+    /// avant d'appliquer le nouveau. Idempotent si l'item donné est déjà
+    /// l'arme courante.
+    func equipWeapon(_ itemId: String) {
+        guard let info = ItemCatalog.all[itemId],
+              let weapon = info.weapon,
+              player.items.contains(itemId) else { return }
+        if player.equippedWeapon == itemId { return }
+
+        unequipWeapon(silent: true)
+        applyWeaponBonus(weapon, sign: +1)
+        player.equippedWeapon = itemId
+        lastMessages = [EventMessage(
+            text: "Tu portes maintenant : \(info.name).",
+            kind: .info
+        )]
+        saveCurrentState()
+    }
+
+    /// Retire l'arme équipée (rendant son bonus). `silent` évite d'ajouter
+    /// un message dans la marge — utilisé pendant `equipWeapon` quand on
+    /// remplace une arme par une autre.
+    func unequipWeapon(silent: Bool = false) {
+        guard let id = player.equippedWeapon,
+              let info = ItemCatalog.all[id],
+              let weapon = info.weapon else { return }
+        applyWeaponBonus(weapon, sign: -1)
+        player.equippedWeapon = nil
+        if !silent {
+            lastMessages = [EventMessage(
+                text: "Tu ranges : \(info.name).",
+                kind: .info
+            )]
+        }
+        saveCurrentState()
+    }
+
+    /// Ajuste les stats du joueur selon le bonus de l'arme. `sign = +1`
+    /// pour équiper, `−1` pour déséquiper. Les valeurs courantes sont
+    /// clampées à 1 minimum.
+    private func applyWeaponBonus(_ weapon: WeaponKind, sign: Int) {
+        switch weapon {
+        case .sharpened:
+            // Lame classique, équilibrée : +1 Habileté.
+            player.skill += 1 * sign
+            player.skillMax += 1 * sign
+        case .assassin:
+            // Lame légère et précise — +1 Chance pour traduire le côté
+            // "tu trouves l'angle mort". Différencie de l'épée du forgeron
+            // pour que les deux armes ne se valent pas.
+            player.luck += 1 * sign
+            player.luckMax += 1 * sign
+        case .cursed:
+            // Le pari : gros bonus Habileté contre perte de Chance.
+            player.skill += 2 * sign
+            player.skillMax += 2 * sign
+            player.luck += -1 * sign
+            player.luckMax += -1 * sign
+        }
+        player.skill = max(1, player.skill)
+        player.skillMax = max(1, player.skillMax)
+        player.luck = max(1, player.luck)
+        player.luckMax = max(1, player.luckMax)
     }
 
     // MARK: - View bindings
@@ -433,6 +646,13 @@ final class GameSession: ObservableObject {
 
             // ----- 1. Combat: suspend and wait for resolveBattle
             if let enemyId = tags["combat"], let base = EnemyCatalog.all[enemyId] {
+                // ⚠️ La musique de combat doit démarrer le plus tôt
+                // possible. On appelle enterBattle() AVANT les state
+                // updates SwiftUI : ainsi l'engine audio commence la
+                // lecture pendant que SwiftUI prépare le re-render de
+                // l'illustration. Différence perceptible ~50-100 ms.
+                AmbientAudio.shared.enterBattle()
+
                 let (enemy, bonusMessage) = applyEnemyModifiers(base, enemyId: enemyId)
                 pendingBattleVictoryPath = tags["victory_path"]
                 pendingBattle = BattleState(setup: BattleSetup(
@@ -449,7 +669,6 @@ final class GameSession: ObservableObject {
                 if let bonusMessage { messages.append(bonusMessage) }
                 lastMessages = messages
                 currentChoices = []
-                AmbientAudio.shared.enterBattle()
                 return
             }
 
@@ -487,16 +706,13 @@ final class GameSession: ObservableObject {
 
         currentText = accumulated
         currentChoices = story.options.map { opt in
-            // InkSwift 2.0 doesn't expose per-choice tags. Conditional /
-            // notable choices are marked in the .ink with a trailing `★`
-            // which we strip here and surface as `isSpecial`.
-            let raw = opt.text
-            if raw.hasSuffix(Self.specialMarker) {
-                let clean = String(raw.dropLast(Self.specialMarker.count))
-                    .trimmingCharacters(in: .whitespaces)
-                return Choice(id: opt.index, text: clean, isSpecial: true)
-            }
-            return Choice(id: opt.index, text: raw, isSpecial: false)
+            // InkSwift 2.0 doesn't expose per-choice tags. Les annotations
+            // sont encodées en fin de texte de choix :
+            //   - `★`         → option notable / conditionnelle (style or)
+            //   - `[$<n>]`    → option payante de <n> pièces d'or — restera
+            //                   visible mais grisée si le joueur n'a pas assez.
+            // On extrait, on nettoie, on construit le `Choice`.
+            return Self.parseChoice(rawText: opt.text, index: opt.index)
         }
         lastMessages = messages
         isEnded = !story.canContinue && story.options.isEmpty
@@ -506,6 +722,10 @@ final class GameSession: ObservableObject {
         } else {
             saveCurrentState()
         }
+        // À chaque pause stable (ou à la fin), on re-vérifie les hauts faits :
+        // c'est le point de passage le plus universel — items ramassés, combats
+        // terminés, outcome posé… tout y est résolu.
+        checkAchievements()
     }
 
     /// Some items grant passive bonuses against specific enemies. Returns
@@ -586,23 +806,49 @@ final class GameSession: ObservableObject {
         // outcome: <id> — final outcome of the adventure (for the ending screen).
         if let raw = tags["outcome"], let outcome = FinalOutcome(rawValue: raw) {
             finalOutcome = outcome
+            recordDiscoveredEnding(outcome)
         }
 
-        // add_item: <id>
-        if let item = tags["add_item"] {
-            player.items.insert(item)
-            story.setVariable("has_\(item)", to: 1)
-            messages.append(EventMessage(
-                text: "Tu obtiens : \(itemDisplayName(item)).",
-                kind: .gain
-            ))
-            AmbientAudio.shared.play(.gainItem)
-            showBurst(EffectBurst(
-                icon: "sparkles",
-                title: "Tu obtiens",
-                subtitle: itemDisplayName(item),
-                tint: Theme.oldGold
-            ))
+        // add_item: <id> ou add_item: <id1>,<id2>,…
+        //
+        // InkSwift expose `currentTags` comme un dict — donc deux lignes
+        // `# add_item: X` + `# add_item: Y` dans le même knot s'écrasent
+        // (seul le dernier survit). Pour permettre les pickups multiples,
+        // on accepte la valeur comma-separated et on itère.
+        if let raw = tags["add_item"] {
+            let items = raw.split(separator: ",")
+                .map { $0.trimmingCharacters(in: .whitespaces) }
+                .filter { !$0.isEmpty }
+            for item in items {
+                player.items.insert(item)
+                story.setVariable("has_\(item)", to: 1)
+                messages.append(EventMessage(
+                    text: "Tu obtiens : \(itemDisplayName(item)).",
+                    kind: .gain
+                ))
+                AmbientAudio.shared.play(.gainItem)
+                showBurst(EffectBurst(
+                    icon: "sparkles",
+                    title: "Tu obtiens",
+                    subtitle: itemDisplayName(item),
+                    tint: Theme.oldGold
+                ))
+                // Auto-équipe la première arme ramassée. Les armes suivantes
+                // restent dans le sac : le joueur choisit explicitement de
+                // changer s'il veut basculer (cf. InventoryView).
+                if let info = ItemCatalog.all[item],
+                   let weapon = info.weapon,
+                   player.equippedWeapon == nil {
+                    applyWeaponBonus(weapon, sign: +1)
+                    player.equippedWeapon = item
+                }
+                // Pulse l'icône d'inventaire dans le HUD quand on ramasse un
+                // consommable — c'est la classe d'item où il y a quelque
+                // chose de "à faire" derrière (boire la potion).
+                if ItemCatalog.all[item]?.consumable != nil {
+                    inventoryPulse += 1
+                }
+            }
         }
 
         // damage: <n>
@@ -662,7 +908,7 @@ final class GameSession: ObservableObject {
             ))
             AmbientAudio.shared.play(.lucky)
             showBurst(EffectBurst(
-                icon: "burst.fill",
+                icon: "ability",
                 title: "Habileté +\(n)",
                 subtitle: "Bonus permanent",
                 tint: Theme.inkBlue
@@ -681,7 +927,7 @@ final class GameSession: ObservableObject {
             ))
             AmbientAudio.shared.play(.lucky)
             showBurst(EffectBurst(
-                icon: "heart.fill",
+                icon: "life",
                 title: "Endurance +\(n)",
                 subtitle: "Maximum élevé",
                 tint: Theme.blood
@@ -716,27 +962,40 @@ final class GameSession: ObservableObject {
         }
 
         // luck_test_book: lucky → luck restored to max; unlucky → -4 stamina.
+        //
+        // ⚠️ Les mutations de stats (`player.luck`, `player.stamina`) sont
+        // toutes différées jusqu'à la fin de l'animation des dés (~1.9 s)
+        // pour que le joueur voie d'abord rouler les dés, puis voie le
+        // chiffre baisser dans son HUD — synchronisé visuellement. Sinon
+        // la jauge baissait avant même que les dés n'aient quitté la main.
         if tags["luck_test_book"] != nil {
             let d = (Int.random(in: 1...6), Int.random(in: 1...6))
-            let (lucky, roll, threshold) = player.testLuck(roll: d.0 + d.1)
+            let roll = d.0 + d.1
+            let threshold = player.luck
+            let lucky = roll <= threshold
             showNarrativeLuck(dice: d, threshold: threshold, lucky: lucky)
             if lucky {
-                player.luck = player.luckMax
                 messages.append(EventMessage(
                     text: "Chanceux (\(roll) ≤ \(threshold)). Un sort se grave dans ta mémoire et restaure ta Chance.",
                     kind: .lucky
                 ))
                 AmbientAudio.shared.play(.lucky)
+                deferLuckTestStatChange {
+                    self.player.luck = self.player.luckMax
+                }
             } else {
-                player.stamina -= 4
                 messages.append(EventMessage(
                     text: "Malchanceux (\(roll) > \(threshold)). Les mots t'écorchent l'esprit : −4 Endurance.",
                     kind: .unlucky
                 ))
                 AmbientAudio.shared.play(.unlucky)
-                if player.stamina <= 0 {
-                    story.moveToKnitStitch("death", stitch: nil)
-                    return true
+                deferLuckTestStatChange {
+                    self.player.luck -= 1
+                    self.player.stamina -= 4
+                    if self.player.stamina <= 0 {
+                        self.story.moveToKnitStitch("death", stitch: nil)
+                        self.advance()
+                    }
                 }
             }
         }
@@ -745,7 +1004,9 @@ final class GameSession: ObservableObject {
         // (ex. "les lames jaillissent") est donné par le passage lui-même.
         if tags["luck_test"] != nil {
             let d = (Int.random(in: 1...6), Int.random(in: 1...6))
-            let (lucky, roll, threshold) = player.testLuck(roll: d.0 + d.1)
+            let roll = d.0 + d.1
+            let threshold = player.luck
+            let lucky = roll <= threshold
             showNarrativeLuck(dice: d, threshold: threshold, lucky: lucky)
             if lucky {
                 messages.append(EventMessage(
@@ -753,16 +1014,22 @@ final class GameSession: ObservableObject {
                     kind: .lucky
                 ))
                 AmbientAudio.shared.play(.lucky)
+                deferLuckTestStatChange {
+                    self.player.luck -= 1
+                }
             } else {
-                player.stamina -= 4
                 messages.append(EventMessage(
                     text: "Malchanceux (\(roll) > \(threshold)). Tu perds 4 points d'Endurance.",
                     kind: .unlucky
                 ))
                 AmbientAudio.shared.play(.unlucky)
-                if player.stamina <= 0 {
-                    story.moveToKnitStitch("death", stitch: nil)
-                    return true
+                deferLuckTestStatChange {
+                    self.player.luck -= 1
+                    self.player.stamina -= 4
+                    if self.player.stamina <= 0 {
+                        self.story.moveToKnitStitch("death", stitch: nil)
+                        self.advance()
+                    }
                 }
             }
         }
@@ -770,24 +1037,32 @@ final class GameSession: ObservableObject {
         // luck_grab_amulette: Mortimer special-case.
         if tags["luck_grab_amulette"] != nil {
             let d = (Int.random(in: 1...6), Int.random(in: 1...6))
-            let (lucky, roll, threshold) = player.testLuck(roll: d.0 + d.1)
+            let roll = d.0 + d.1
+            let threshold = player.luck
+            let lucky = roll <= threshold
             showNarrativeLuck(dice: d, threshold: threshold, lucky: lucky)
             if lucky {
-                player.items.insert("amulet")
-                story.setVariable("has_amulet", to: 1)
                 messages.append(EventMessage(
                     text: "Chanceux (\(roll) ≤ \(threshold)) ! Tu saisis l'amulette et fonces vers la sortie.",
                     kind: .lucky
                 ))
                 AmbientAudio.shared.play(.gainItem)
+                deferLuckTestStatChange {
+                    self.player.luck -= 1
+                    self.player.items.insert("amulet")
+                    self.story.setVariable("has_amulet", to: 1)
+                }
             } else {
                 messages.append(EventMessage(
                     text: "Malchanceux (\(roll) > \(threshold)). Le spectre te happe avant la porte.",
                     kind: .unlucky
                 ))
-                player.stamina = 0
-                story.moveToKnitStitch("death", stitch: nil)
-                return true
+                deferLuckTestStatChange {
+                    self.player.luck -= 1
+                    self.player.stamina = 0
+                    self.story.moveToKnitStitch("death", stitch: nil)
+                    self.advance()
+                }
             }
         }
 
@@ -800,17 +1075,187 @@ final class GameSession: ObservableObject {
             }
         }
 
+        // Note historique : on avait ajouté ici un filet de sécurité
+        // « si player.isDead et qu'aucun handler n'a fait le saut vers
+        // death, jump à death ». Il provoquait une boucle infinie en lecture
+        // du death knot lui-même (les tags d'outcome / ending peuvent être
+        // émis sur un chunk différent du premier texte, donc finalOutcome
+        // pouvait rester nil au moment du check). Chaque handler qui peut
+        // amener stamina à 0 (damage, luck_test, luck_test_book,
+        // luck_grab_amulette, resolveBattle .defeat) gère déjà son jump
+        // explicitement — pas besoin de doublon.
+
         return false
+    }
+
+    // MARK: - Méta-progression (persistée hors save de run)
+
+    /// Clés UserDefaults pour la méta-progression : ces données traversent
+    /// les parties (contrairement à `saveKey` qui ne contient que la run
+    /// courante et est invalidée à chaque mort / victoire / nouveau format).
+    private static let kDiscoveredEndings = "tomb.meta.endings"
+    private static let kDefeatedEnemies   = "tomb.meta.bestiary"
+    private static let kAchievements      = "tomb.meta.achievements"
+
+    /// Marque une fin comme découverte et persiste. Appelé quand l'aventure
+    /// se termine sur un knot taggé `# outcome: <id>`.
+    private func recordDiscoveredEnding(_ outcome: FinalOutcome) {
+        if discoveredEndings.insert(outcome).inserted {
+            Self.persistDiscoveredEndings(discoveredEndings)
+        }
+    }
+
+    /// Marque un ennemi comme vaincu et persiste. Appelé depuis
+    /// `resolveBattle` sur victoire.
+    private func recordDefeatedEnemy(_ enemyId: String) {
+        if defeatedEnemies.insert(enemyId).inserted {
+            Self.persistDefeatedEnemies(defeatedEnemies)
+        }
+    }
+
+    private static func loadDiscoveredEndings() -> Set<FinalOutcome> {
+        guard let raw = UserDefaults.standard.array(forKey: kDiscoveredEndings) as? [String] else {
+            return []
+        }
+        return Set(raw.compactMap { FinalOutcome(rawValue: $0) })
+    }
+
+    private static func persistDiscoveredEndings(_ set: Set<FinalOutcome>) {
+        UserDefaults.standard.set(set.map { $0.rawValue }, forKey: kDiscoveredEndings)
+    }
+
+    private static func loadDefeatedEnemies() -> Set<String> {
+        Set(UserDefaults.standard.stringArray(forKey: kDefeatedEnemies) ?? [])
+    }
+
+    private static func persistDefeatedEnemies(_ set: Set<String>) {
+        UserDefaults.standard.set(Array(set), forKey: kDefeatedEnemies)
+    }
+
+    private static func loadAchievements() -> Set<String> {
+        Set(UserDefaults.standard.stringArray(forKey: kAchievements) ?? [])
+    }
+
+    private static func persistAchievements(_ set: Set<String>) {
+        UserDefaults.standard.set(Array(set), forKey: kAchievements)
+    }
+
+    /// Re-évalue toutes les conditions et débloque les nouveaux hauts faits.
+    /// Appelé à chaque event clé (fin d'`advance()`, victoire de combat,
+    /// `useItem`). Émet un burst pour chaque déblocage, espacé de ~1.5 s
+    /// si plusieurs tombent d'un coup.
+    func checkAchievements() {
+        var newlyUnlocked: [Achievement] = []
+        for ach in AchievementsCatalog.all where !unlockedAchievements.contains(ach.id) {
+            if achievementSatisfied(ach.id) {
+                unlockedAchievements.insert(ach.id)
+                newlyUnlocked.append(ach)
+            }
+        }
+        guard !newlyUnlocked.isEmpty else { return }
+        Self.persistAchievements(unlockedAchievements)
+        scheduleAchievementBursts(newlyUnlocked)
+    }
+
+    /// Évalue la condition d'un haut fait donné sur l'état courant du
+    /// joueur / session. Les conditions "fin d'aventure" requièrent
+    /// `isEnded` ou `finalOutcome` non-nil pour ne pas se déclencher trop tôt.
+    private func achievementSatisfied(_ id: String) -> Bool {
+        switch id {
+        case AchievementsCatalog.ID.firstBlood:
+            return battlesWon >= 1
+
+        case AchievementsCatalog.ID.pacifist:
+            return finalOutcome == .honour && battlesWon == 0
+
+        case AchievementsCatalog.ID.ironMan:
+            return finalOutcome != nil && finalOutcome != .death && potionsUsedThisRun == 0
+
+        case AchievementsCatalog.ID.collector:
+            return player.items.count >= 10
+
+        case AchievementsCatalog.ID.cartographer:
+            return discoveredEndings.count >= FinalOutcome.allCases.count
+
+        case AchievementsCatalog.ID.bestiaryFull:
+            // Les ennemis du bestiaire affichable (cf. BestiaryView.orderedIds)
+            // forment le set "complet". `mortimer_spectre` (base) n'apparaît
+            // que dans les saves antérieures au multi-phase ; on le tolère.
+            let required: Set<String> = [
+                "goblin_scout", "forest_wolves", "forest_boar",
+                "forest_lycanthrope", "marsh_serpent", "tomb_ghoul",
+                "skeleton_guardians", "gallery_skeletons", "flooded_eels",
+                "tomb_basilisk", "treasure_guardian", "vengeful_spirit",
+                "pit_skeletons", "mortimer_spectre_phase1",
+                "mortimer_spectre_phase2"
+            ]
+            return required.isSubset(of: defeatedEnemies)
+
+        case AchievementsCatalog.ID.rich:
+            return finalOutcome != nil && finalOutcome != .death && player.gold >= 30
+
+        case AchievementsCatalog.ID.survivor:
+            guard finalOutcome == .honour else { return false }
+            let ratio = Double(player.stamina) / Double(max(1, player.staminaMax))
+            return ratio >= 0.9
+
+        case AchievementsCatalog.ID.legend:
+            return finalOutcome != nil && finalOutcome != .death && difficulty == .legend
+
+        case AchievementsCatalog.ID.triadOfHerald:
+            return finalOutcome != nil && finalOutcome != .death
+                && player.items.contains("protective_charm")
+                && player.items.contains("dead_lord_talisman")
+                && player.items.contains("spirit_blood")
+
+        case AchievementsCatalog.ID.cursedAndProud:
+            return finalOutcome != nil && finalOutcome != .death
+                && player.equippedWeapon == "cursed_blade"
+
+        case AchievementsCatalog.ID.widowsPromise:
+            return finalOutcome == .honour
+                && player.items.contains("silver_chain")
+
+        case AchievementsCatalog.ID.mortimerSeesYou:
+            return finalOutcome != nil && finalOutcome != .death
+                && player.items.contains("mortimer_attention")
+
+        case AchievementsCatalog.ID.perfectRun:
+            return finalOutcome == .transcendence
+
+        default:
+            return false
+        }
+    }
+
+    /// Étale les bursts d'achievement dans le temps quand plusieurs se
+    /// débloquent ensemble — sinon ils s'écraseraient mutuellement en
+    /// passant tous par `effectBurst` (un seul slot affiché à la fois).
+    private func scheduleAchievementBursts(_ achievements: [Achievement]) {
+        Task { @MainActor in
+            for (idx, ach) in achievements.enumerated() {
+                if idx > 0 {
+                    try? await Task.sleep(for: .milliseconds(2200))
+                }
+                showBurst(EffectBurst(
+                    icon: ach.icon,
+                    title: "Haut fait",
+                    subtitle: ach.title,
+                    tint: Theme.oldGold
+                ))
+                AmbientAudio.shared.play(.gainItem)
+            }
+        }
     }
 
     // MARK: - Save / load
 
-    /// Bumpé à v9 avec la deuxième vague d'expansion (Roncebrune élargi,
-    /// forêt profonde, aile sud du tombeau) : la place du village, le
-    /// carrefour et le couloir gagnent encore plus de choix, et de nouvelles
-    /// `VAR has_*` apparaissent. Les saves v8 auraient des indices de choix
-    /// qui ne correspondent plus.
-    private static let saveKey = "tomb.save.v11"
+    /// Bumpé à v12 avec l'ajout de `PlayerState.equippedWeapon` (slot
+    /// d'arme), la conversion des potions / herbes en items consommables,
+    /// et le retrait du tag `# skill_bonus:` sur les armes (le bonus est
+    /// désormais dynamique selon l'arme portée). Les saves v11 décodent
+    /// quand même mais le slot d'arme part vide.
+    private static let saveKey = "tomb.save.v12"
 
     private struct SaveData: Codable {
         let player: PlayerState
@@ -822,6 +1267,10 @@ final class GameSession: ObservableObject {
         let battlesFled: Int
         let currentChapter: Chapter
         let difficulty: Difficulty
+        /// Optionnel pour rester compatible avec les saves v12 sans ce
+        /// champ. À l'absence, on retombe sur 0 — le compteur reprend à zéro
+        /// pour la partie en cours.
+        let potionsUsedThisRun: Int?
     }
 
     /// Serialises the current narrative state into UserDefaults. Only called
@@ -836,7 +1285,8 @@ final class GameSession: ObservableObject {
             battlesWon: battlesWon,
             battlesFled: battlesFled,
             currentChapter: currentChapter,
-            difficulty: difficulty
+            difficulty: difficulty,
+            potionsUsedThisRun: potionsUsedThisRun
         )
         if let data = try? JSONEncoder().encode(save) {
             UserDefaults.standard.set(data, forKey: Self.saveKey)
@@ -870,6 +1320,7 @@ final class GameSession: ObservableObject {
         lastMessages = save.lastMessages
         battlesWon = save.battlesWon
         battlesFled = save.battlesFled
+        potionsUsedThisRun = save.potionsUsedThisRun ?? 0
         currentChapter = save.currentChapter
         difficulty = save.difficulty
         isEnded = false
@@ -889,17 +1340,48 @@ final class GameSession: ObservableObject {
 
     // MARK: - Effect burst
 
+    /// File d'attente : un même tour de jeu peut générer plusieurs bursts
+    /// (ex. `add_item` + `stamina_bonus` + `luck_bonus` sur la bénédiction du
+    /// père Cassien). Sans queue, chaque nouvel appel à `showBurst` annulait
+    /// l'animation en cours et seul le dernier était visible.
+    private var burstQueue: [EffectBurst] = []
+    private var burstDraining = false
+
     private func showBurst(_ burst: EffectBurst) {
-        burstTask?.cancel()
-        withAnimation(.spring(response: 0.4, dampingFraction: 0.6)) {
-            effectBurst = burst
+        burstQueue.append(burst)
+        guard !burstDraining else { return }
+        // Important : on doit verrouiller AVANT de spawner la Task.
+        // Sinon, deux appels synchrones à showBurst (ex. `add_item:
+        // potion, compass`) voient burstDraining=false tous les deux,
+        // spawnent chacun leur drain, et la deuxième écrase la première
+        // popin avant qu'elle ait fini de jouer. Le joueur ne voyait
+        // alors que le dernier item.
+        burstDraining = true
+        Task { @MainActor in
+            await drainBurstQueue()
         }
-        burstTask = Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(1500))
-            if Task.isCancelled { return }
-            withAnimation(.easeOut(duration: 0.3)) {
+    }
+
+    /// Joue les bursts un par un, ~2 s par burst + 250 ms de respiration
+    /// entre chaque. Boucle tant que la queue n'est pas vide (les bursts
+    /// ajoutés en cours de route sont récupérés au tour suivant).
+    @MainActor
+    private func drainBurstQueue() async {
+        defer { burstDraining = false }
+        while !burstQueue.isEmpty {
+            let next = burstQueue.removeFirst()
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.6)) {
+                effectBurst = next
+            }
+            // 2 s : le joueur a le temps de lire le titre + sous-titre
+            // (ex. "Tu obtiens : Lame affûtée") avant que la popin
+            // disparaisse. L'ancien 1.1 s passait trop vite quand
+            // plusieurs items s'enchaînaient.
+            try? await Task.sleep(for: .milliseconds(2000))
+            withAnimation(.easeOut(duration: 0.30)) {
                 effectBurst = nil
             }
+            try? await Task.sleep(for: .milliseconds(250))
         }
     }
 
@@ -915,6 +1397,22 @@ final class GameSession: ObservableObject {
             withAnimation(.easeIn(duration: 0.3)) {
                 pendingNarrativeLuck = nil
             }
+        }
+    }
+
+    /// Différe une mutation de stats (luck, stamina, items…) jusqu'à la
+    /// fin de la chute des dés narratifs — au moment où le verdict
+    /// apparaît dans l'overlay. Sans ça, les jauges baissaient
+    /// instantanément alors que les dés n'avaient pas encore quitté la
+    /// main, et le joueur voyait le résultat « avant l'heure ».
+    ///
+    /// 1900 ms = 1750 ms d'animation de chute (cf.
+    /// `NarrativeLuckOverlay.task` qui révèle le verdict à 1750 ms) +
+    /// 150 ms de marge pour que le chiffre du dé soit bien posé visuellement.
+    private func deferLuckTestStatChange(_ change: @escaping @MainActor () -> Void) {
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(1900))
+            change()
         }
     }
 

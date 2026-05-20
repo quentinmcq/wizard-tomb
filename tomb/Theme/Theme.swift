@@ -168,6 +168,10 @@ struct PlaysButtonTap: ViewModifier {
 /// présentation "texte" plutôt que l'emoji multicolore — sinon le glyphe
 /// ignore `.foregroundColor` et reste affiché avec ses couleurs natives
 /// d'emoji.
+///
+/// Cas particulier : `"heart.fill"` est interprété comme l'asset pixel-art
+/// custom du jeu (`heart.png`) — voir `Theme.pixelHeart(size:)`. Les
+/// autres SF Symbols continuent d'être rendus normalement.
 struct StatGlyph: View {
     let icon: String
     let color: Color
@@ -183,12 +187,80 @@ struct StatGlyph: View {
                 // sur les heart.fill / sparkles voisins.
                 Text(icon + "\u{FE0E}")
                     .font(.system(size: size * 1.35, weight: .semibold))
+                    .foregroundColor(color)
             } else {
-                Image(systemName: icon)
-                    .font(.system(size: size))
+                // Ascii : `Theme.icon` intercepte les noms qui correspondent
+                // à un PNG du bundle (heart.fill, ability, green_potion…)
+                // et retombe sur un SF Symbol sinon.
+                Theme.icon(icon, size: size, color: color)
             }
         }
-        .foregroundColor(color)
+    }
+}
+
+extension Theme {
+
+    /// Cache thread-safe d'images pixel-art chargées depuis le bundle.
+    /// `NSCache` gère seul la concurrence et la pression mémoire (purge
+    /// automatique sous warning), donc on peut l'appeler depuis n'importe
+    /// quel thread sans synchroniser à la main.
+    private static let bundleImageCache = NSCache<NSString, UIImage>()
+
+    /// Charge `<name>.png` depuis le root du bundle (le projet n'utilise
+    /// pas d'Assets.xcassets, les ressources sont placées à plat).
+    /// Renvoie nil si l'asset est absent. Cache lazy.
+    private static func bundleImage(named name: String) -> UIImage? {
+        if let cached = bundleImageCache.object(forKey: name as NSString) {
+            return cached
+        }
+        guard let url = Bundle.main.url(forResource: name, withExtension: "png"),
+              let img = UIImage(contentsOfFile: url.path) else {
+            return nil
+        }
+        bundleImageCache.setObject(img, forKey: name as NSString)
+        return img
+    }
+
+    /// Image pixel-art arbitraire chargée depuis le bundle. Désactive
+    /// l'interpolation (`.interpolation(.none)`) pour garder le rendu net
+    /// à l'agrandissement, et bump légèrement la taille (×1.3) pour
+    /// matcher visuellement le poids d'un SF Symbol à la même `size`.
+    /// Retourne `EmptyView` si l'asset n'existe pas — préférer `Theme.icon`
+    /// qui fallback automatiquement sur SF Symbol.
+    @ViewBuilder
+    static func pixelImage(named name: String, size: CGFloat) -> some View {
+        if let img = bundleImage(named: name) {
+            Image(uiImage: img)
+                .resizable()
+                .interpolation(.none)
+                .aspectRatio(contentMode: .fit)
+                .frame(width: size * 1.3, height: size * 1.3)
+        } else {
+            EmptyView()
+        }
+    }
+
+    /// Conserve l'API historique : cœur pixel-art via le pipeline générique.
+    @ViewBuilder
+    static func pixelHeart(size: CGFloat) -> some View {
+        pixelImage(named: "heart", size: size)
+    }
+
+    /// Rendu unifié pour une icône donnée par nom. Si le nom correspond à
+    /// un PNG présent dans le bundle (asset pixel-art custom), on l'utilise.
+    /// Sinon, on retombe sur un SF Symbol — ce qui permet aux call sites
+    /// existants d'utiliser des noms type `"heart.fill"`, `"sparkles"` ou
+    /// d'évoluer vers des assets custom (`"ability"`, `"green_potion"`…)
+    /// sans modifier les vues consommatrices.
+    @ViewBuilder
+    static func icon(_ name: String, size: CGFloat, color: Color) -> some View {
+        if bundleImage(named: name) != nil {
+            pixelImage(named: name, size: size)
+        } else {
+            Image(systemName: name)
+                .font(.system(size: size))
+                .foregroundColor(color)
+        }
     }
 }
 

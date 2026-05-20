@@ -7,7 +7,8 @@
 //    # flee_to: <knot>       → knot vers lequel fuir pendant le combat
 //    # victory_path: <knot>  → knot vers lequel sauter en cas de victoire
 //    # add_item: <id>        → ajoute l'objet au PlayerState (et set la
-//                              variable Ink correspondante has_<id> = 1)
+//                              variable Ink correspondante has_<id> = 1).
+//                              Accepte une liste : "add_item: a, b, c".
 //    # damage: <n>           → retire n points d'Endurance
 //    # heal: <n>             → restaure n points d'Endurance (capé au max)
 //    # spend_gold: <n>       → retire n pièces d'or
@@ -90,35 +91,46 @@ Avant de quitter Roncebrune pour de bon, tu prends un instant pour traverser la 
 -> village
 
 === village ===
-La place est presque déserte. Quelques fenêtres se sont entrouvertes pour te voir partir. AAu-delà de la fontaine, plusieurs ruelles s’enfoncent dans le village — certaines sont abandonnées, d’autres encore habitées.
+La place est presque déserte. Quelques fenêtres se sont entrouvertes pour te voir partir. Au-delà de la fontaine, plusieurs ruelles s’enfoncent dans le village — certaines sont abandonnées, d’autres encore habitées.
 
-* {not inn_rumour} [Pousser la porte de l'auberge]              -> inn
-* {not beggar_offering} [Saluer le mendiant sur la place]         -> beggar
-* {not forge_sharpen} [Passer chez le forgeron]                   -> forge
-* {not widow_fountain} [Parler à la veuve sur le banc de la fontaine] -> widow_fountain
-* {not temple_prayer} [Pousser la porte du petit temple]            -> temple_priest
-* {not apothecary_visit} [Descendre la ruelle vers l'apothicaire] -> apothecary
-* {not baths_skip} [Profiter des bains publics avant de partir]   -> public_baths
-* {not child_reward} [Saluer l'enfant qui joue près du puits]  -> playing_child
-* {not witch_visit} [S'aventurer jusqu'à la hutte de la sorcière, à l'orée du bois] -> witch_woodedge
-* [Quitter le village pour de bon]                                  -> village_depart
+* {not (beggar_offering and child_reward and widow_fountain and temple_priest)} [Faire le tour de la place] -> village_square
+* {not (inn_rumour and forge_sharpen and apothecary and public_baths and witch_woodedge)} [Descendre dans les ruelles] -> village_alleys
+* [Quitter Roncebrune pour de bon]                                  -> village_depart
+
+=== village_square ===
+Tu reprends ton tour de la place. Le pavé crisse sous tes bottes ; le tilleul mort projette une ombre maigre sur la fontaine, et chaque visage que tu croises t'évite ou t'observe trop fixement.
+
+* {not beggar_offering} [Saluer le mendiant assis sur son sac de toile]   -> beggar
+* {not child_reward} [Saluer l'enfant qui joue près du puits]             -> playing_child
+* {not widow_fountain} [Parler à la veuve sur le banc de la fontaine]     -> widow_fountain
+* {not temple_priest} [Pousser la porte du petit temple]                  -> temple_priest
+* [Revenir au cœur du village] -> village
+
+=== village_alleys ===
+Tu t'enfonces dans les ruelles. Les volets se referment à mesure que tu passes, et l'écho de tes pas remplit des passages où aucune voix ne répond plus.
+
+* {not inn_rumour} [Pousser la porte de l'auberge]                                       -> inn
+* {not forge_sharpen} [Passer chez le forgeron]                                          -> forge
+* {not apothecary} [Descendre la ruelle vers l'apothicaire]                              -> apothecary
+* {not public_baths} [Profiter des bains publics avant de partir]                        -> public_baths
+* {not witch_woodedge} [Pousser jusqu'à la hutte de la sorcière, à l'orée du bois]       -> witch_woodedge
+* [Revenir au cœur du village] -> village
 
 === forge ===
-La forge crache une fumée noire qui monte droit dans le matin froid. Maître Borvic, le forgeron, frappe une lame rougie sur l'enclume sans lever les yeux quand tu entres. Il sent simplement ton ombre tomber sur son ouvrage.
+La forge recrache une fumée noire qui grimpe dans l’air glacé du matin. Maître Borvic martèle une lame rougeoyante sur l’enclume sans même relever la tête lorsque tu entres. Il remarque seulement ton ombre glisser sur son établi.
 
-« Tu pars au tombeau, on dirait. Pose ton épée sur l'établi. Cinq pièces, et je te la rends affûtée comme jamais. C'est pas un cadeau, c'est mon métier — et le tien risque d'en avoir besoin. »
+« On dirait que tu pars fouiller un tombeau. Pose ton épée là. Cinq pièces, et je te la rends plus tranchante qu’un rasoir. C’est pas de la charité, c’est mon métier — et vu ta mine, tu ferais mieux d’en profiter. »
 
-* {gold >= 5} [Payer 5 pièces d'or pour aiguiser l'épée]   -> forge_sharpen
-* [Refuser et sortir]                          -> village
+* [Payer 5 pièces d'or pour aiguiser l'épée ($5)]   -> forge_sharpen
+* [Refuser et sortir]                          -> village_alleys
 
 === forge_sharpen ===
 Borvic prend ta lame, la chauffe au rouge, la frappe sept fois sur l'enclume avec une précision d'instinct qui semble venir d'ailleurs. Quand il te la rend, encore fumante, tu sens la différence avant même de la tenir. Tu la fais tournoyer une fois. Elle a la justesse inquiétante d'une lame qui n'attend que sa première morsure.
 
 # spend_gold: 5
-# skill_bonus: 1
 # add_item: sharpened_blade
 
-* [Le remercier et sortir] -> village
+* [Le remercier et sortir] -> village_alleys
 
 === widow_fountain ===
 Une vieille femme, tout de noir vêtue, est assise sur un banc à l’ombre d’un tilleul mort, près d’une fontaine qui crache une eau de métal. Elle tient un mouchoir entre ses doigts noueux, sans plus le porter à ses yeux : il y a longtemps qu’elle ne pleure plus, mais elle ne s’en sépare pas.
@@ -131,7 +143,7 @@ Elle te tend un petit médaillon de fer noirci, plus proche d’une promesse que
 
 # add_item: widow_token
 
-* [La saluer et retourner sur la place] -> village
+* [La saluer et retourner sur la place] -> village_square
 
 === inn ===
 L'auberge sent la bière tiède, la sueur, et le bois humide. Trois bûcherons jouent aux dés près de l'âtre, indifférents à ton entrée. Mais un homme barbu, seul dans le coin le plus sombre, te suit du regard.
@@ -140,8 +152,8 @@ Il fait tourner un verre vide entre ses doigts.
 
 « Tu pars pour le tombeau, on dirait. Personne ne va plus là-bas — sauf les fous. Si tu paies ma prochaine tournée, je te dis ce que je sais. »
 
-* {gold >= 2} [Lui payer 2 pièces d'or]           -> inn_rumour
-* [Refuser et sortir]                 -> village
+* [Lui payer 2 pièces d'or ($2)]           -> inn_rumour
+* [Refuser et sortir]                 -> village_alleys
 
 === inn_rumour ===
 L'homme avale d'un trait sa nouvelle chope, essuie ses moustaches du revers du poignet, et se penche au-dessus de la table comme s'il craignait qu'un fantôme l'écoute.
@@ -155,18 +167,18 @@ Il essuie du doigt une dernière goutte de bière accrochée à sa moustache.
 # spend_gold: 2
 # add_item: rumour_mortimer
 
-* [Sortir de l'auberge] -> village
+* [Sortir de l'auberge] -> village_alleys
 
 === beggar ===
 Près du puits, un vieux mendiant est assis sur un sac de toile. Ses yeux sont d'un gris si clair qu'on dirait deux pièces d'argent dans un visage tanné par les années. Quand il te voit, il sourit.
 
 « Une pièce, brave voyageur, et je murmurerai ton nom aux esprits de la Chance. Ils écoutent encore les vieux mendiants, parfois. »
 
-* {gold >= 1} [Lui donner une pièce d'or]    -> beggar_offering
-* [Refuser et passer ton chemin] -> village
+* [Lui donner une pièce d'or ($1)]    -> beggar_offering
+* [Refuser et passer ton chemin] -> village_square
 
 === beggar_offering ===
-Tu déposes une pièce d'or dans sa paume calleuse. Il referme ses doigts dessus et ferme les yeux. Il murmure quelque chose dans une langue que tu ne connais pas, et une douce chaleur t'envahit la nuque, comme un soleil oublié depuis longtemps
+Tu déposes une pièce d'or dans sa paume calleuse. Il referme ses doigts dessus et ferme les yeux. Il murmure quelque chose dans une langue que tu ne connais pas, et une douce chaleur t'envahit la nuque, comme un soleil oublié depuis longtemps.
 
 Le vieil homme rouvre les yeux : ils sont, l'espace d'un instant, complètement blancs.
 
@@ -176,35 +188,36 @@ Le vieil homme rouvre les yeux : ils sont, l'espace d'un instant, complètement 
 # luck_bonus: 1
 # add_item: blessing
 
-* [Continuer ton tour de la place] -> village
+* [Continuer ton tour de la place] -> village_square
 
 // ---------- 1bis. Roncebrune élargi ----------
 
 === temple_priest ===
-Le temple n'est plus qu'un nef étroite, dépourvue de cloche et de fidèles. Père Cassien y vit seul, courbé sur l'autel comme un homme qui chercherait dans la pierre le nom d'une eau perdue. Il lève les yeux quand tu pousses la porte. Ils sont d'un bleu épuisé.
+Le temple n'est plus qu'une nef étroite, dépourvue de cloche et de fidèles. Père Cassien y vit seul, courbé sur l'autel comme un homme qui chercherait dans la pierre le nom d'une eau perdue. Il lève les yeux quand tu pousses la porte. Ils sont d'un bleu épuisé.
 
 « Tu pars là-bas. Bien. Approche, mon fils. La protection que je peux t'offrir est maigre, mais elle a un prix — pas pour moi, pour le tronc. Sans cela, le temple n’aurait plus de toit cet hiver. »
 
 Il désigne du menton la fente de bois où l'on jette les pièces.
 
-* {gold >= 2} [Déposer deux pièces dans le tronc et recevoir la bénédiction] -> temple_blessing
+* [Déposer deux pièces dans le tronc et recevoir la bénédiction ($2)] -> temple_blessing
 * [Lui demander s'il a connu Mortimer] -> temple_mortimer
-* [Sortir sans rien laisser] -> temple_prayer
+* [Sortir sans rien laisser] -> temple_leave
 
 === temple_blessing ===
 Tu fais glisser deux pièces dans la fente. Le père Cassien hoche la tête, pose ses mains sur ton front. Le bois de l'autel craque doucement. Tu sens une douceur grave traverser tes épaules — non pas un feu, pas une chaleur, mais un poids qu'on retire. Tu te tiens plus droit en sortant.
+
+Tu refermes la porte du temple derrière toi. La place te paraît un instant plus vaste qu'elle ne l'est réellement.
 
 # spend_gold: 2
 # add_item: priest_blessing
 # stamina_bonus: 1
 # luck_bonus: 1
 
-* [Le remercier et reprendre la place] -> temple_prayer
+* [Retourner sur la place] -> village_square
 
-=== temple_prayer ===
-Tu refermes la porte du temple derrière toi. La place te paraît un instant plus vaste qu'elle n'est.
-
-* [Retourner sur la place] -> village
+=== temple_leave ===
+Tu refermes la porte du temple derrière toi sans avoir laissé la moindre pièce. La place te paraît un instant plus vaste qu'elle ne l'est réellement.
+-> village_square
 
 === temple_mortimer ===
 Le père Cassien plisse les yeux, comme si tu venais de tirer un coin de drap qu'il préférait laisser bordé.
@@ -215,82 +228,89 @@ Il sourit sans humour.
 
 « S'il te touche, dis-lui que j'attends qu'il revienne s'agenouiller. Il comprendra. »
 
-* {gold >= 2} [Déposer deux pièces et recevoir sa bénédiction] -> temple_blessing
-* [Sortir du temple] -> temple_prayer
+* [Déposer deux pièces et recevoir sa bénédiction ($2)] -> temple_blessing
+* [Sortir du temple] -> temple_leave
 
 === apothecary ===
-La boutique de mère Esmé sent les feuilles séchées, le miel chaud et quelque chose d'âcre qu'on ne nomme pas. Elle est assise derrière un comptoir taché, vieille à un point qu'on n'évalue plus, et ses doigts trient des graines sans regarder.
+La boutique de mère Esmé embaume les herbes sèches, le miel chauffé et une odeur plus âcre qu’on préfère ne pas identifier. Derrière son comptoir taché, la vieille femme trie lentement des graines ridées, sans jamais lever les yeux vers toi.
 
-« Trois choses sur l'étagère du fond, jeune. La fiole verte qui te recolle si tu fends en deux. La rouge qui rend la peau dure quelques heures. Et la noire — celle-là, c'est pour les esprits, pas pour les vivants. Chacune vaut son prix. »
+« Trois fioles sur l’étagère du fond, jeune. La verte te remet sur pied quand tes tripes veulent se répandre au sol. La rouge durcit la peau quelques heures, juste assez pour survivre à une mauvaise rencontre. Et la noire… verse-en une goutte devant les morts qui marchent encore, et ils hésiteront à t’approcher. Chaque chose a son prix. »
 
-* {gold >= 4} [Acheter la fiole verte (4 pièces — soin)] -> apothecary_green
-* {gold >= 5} [Acheter la fiole rouge (5 pièces — peau dure)] -> apothecary_red
-* {gold >= 3} [Acheter la fiole noire (3 pièces — repousse les morts)] -> apothecary_black
+* [Acheter la fiole verte (4 pièces — soin) ($4)] -> apothecary_green
+* [Acheter la fiole rouge (5 pièces — peau dure) ($5)] -> apothecary_red
+* [Acheter la fiole noire (3 pièces — repousse les morts) ($3)] -> apothecary_black
 * [La saluer et sortir] -> apothecary_visit
 
 === apothecary_visit ===
-Mère Esmé ne te rappelle pas quand tu refermes la porte.
-
-* [Retourner sur la place] -> village
+Mère Esmé ne te rappelle pas quand tu refermes la porte. Tu remontes la ruelle.
+-> village_alleys
 
 === apothecary_green ===
 Mère Esmé glisse la fiole dans sa paume puis dans la tienne, sans la regarder.
 
 « Tu en gardes une gorgée pour les pires moments. »
 
+Elle replonge dans ses graines sans un mot de plus. Tu refermes la porte et tu remontes la ruelle.
+
 # spend_gold: 4
 # add_item: healing_potion
 
-* [Sortir] -> apothecary_visit
+* [Reprendre les ruelles] -> village_alleys
 
 === apothecary_red ===
 La fiole rouge est tiède. Tu la débouches et tu en bois. La peau te raidit immédiatement, comme un cuir mouillé qui sèche.
 
 « Tu encaisseras un coup de plus avant de tomber. C'est tout ce que je vends. »
 
+Tu refermes la porte sur l'odeur d'herbes brûlées et tu remontes vers la place.
+
 # spend_gold: 5
 # add_item: hardened_skin
+# stamina_bonus: 2
 
-* [Sortir] -> apothecary_visit
+* [Reprendre les ruelles] -> village_alleys
 
 === apothecary_black ===
 Mère Esmé te tend la fiole noire avec plus de précaution que les autres.
 
-« Si tu croises un mort qui marche encore, tu en jettes une goutte sur ses pieds. Ça les calme. Tu m'entendras pas remercier qui que ce soit, mais bonne chance. »
+« Si tu tombes sur un mort qui marche encore, verse une goutte à ses pieds. Ça les fait reculer et ils te laisseront tranquille. Bonne chance. »
+
+Tu glisses la fiole dans ta ceinture et tu sors, les épaules un peu plus lourdes.
 
 # spend_gold: 3
 # add_item: necro_oil
 
-* [Sortir] -> apothecary_visit
+* [Reprendre les ruelles] -> village_alleys
 
 === public_baths ===
 Les bains de Roncebrune sont tenus par un homme placide, chauve depuis longtemps, mais qui parle avec l’assurance de quelqu’un à l’épaisse chevelure. Dans la pénombre, la grande cuve de pierre fume doucement ; l’eau, chauffée par un foyer souterrain, exhale des odeurs d’herbe humide et de cendre.
 
 « Deux pièces d’or, et tu peux entrer. L’eau fait davantage pour un homme fatigué que la plupart des prêtres. »
 
-* {gold >= 2} [Payer deux pièces et entrer dans la cuve] -> baths_tub
-* [Refuser et sortir] -> baths_skip
+* [Payer deux pièces et entrer dans la cuve ($2)] -> baths_tub
+* [Refuser et sortir] -> baths_leave
 
 === baths_tub ===
 L'eau te brûle, puis te détend. Tu y restes un long moment. Quand tu sors, des courbatures dont tu n'avais pas conscience ont disparu, et tes épaules se sont raffermies — comme si le corps avait gagné quelque chose qu'il n'avait pas en y entrant.
 
+Tu te rhabilles, salue le tenancier d'un hochement de tête, et tu remontes la ruelle vers la place.
+
 # spend_gold: 2
 # stamina_bonus: 2
 
-* [Sortir, ravigoté] -> baths_skip
+* [Reprendre les ruelles] -> village_alleys
 
-=== baths_skip ===
-Tu remontes la ruelle vers la place.
-
-* [Retour sur la place] -> village
+=== baths_leave ===
+Tu refermes la porte derrière toi sans avoir trempé un orteil. La ruelle est silencieuse.
+-> village_alleys
 
 === playing_child ===
 Près du puits, une enfant d'une dizaine d'années lance trois cailloux contre un mur. Elle te jette un coup d'œil. Elle a les yeux sérieux des enfants qui ont compris quelque chose que les adultes n'ont pas su leur cacher.
 
 « Tu pars chez Mortimer. C'est pas la peine, tu sais. Mais si tu donnes un sou à ma mère elle te bénira pas, alors j'ai pensé que tu pourrais m'en donner un, moi, et que je te dirais ce que j'ai entendu. »
 
-* {gold >= 1} [Lui glisser une pièce] -> child_reward
-* [Refuser gentiment et passer ton chemin] -> village
+* [Lui glisser une pièce ($1)] -> child_reward
+* [Refuser gentiment et passer ton chemin] -> village_square
 
 === child_reward ===
 Elle empoche la pièce sans rougir et te regarde dans les yeux.
@@ -302,7 +322,7 @@ Elle reprend ses cailloux et te tourne le dos.
 # spend_gold: 1
 # luck_bonus: 1
 
-* [Remonter sur la place] -> village
+* [Remonter sur la place] -> village_square
 
 === witch_woodedge ===
 La hutte est à l'extrémité de la dernière ruelle, là où le pavé cède la place à l'herbe et où les autres maisons ont depuis longtemps cessé de regarder. Un fil de fumée bleue monte par le toit. La sorcière t'ouvre avant que tu n'aies frappé.
@@ -314,73 +334,84 @@ Elle a la peau colorée d'un fruit oublié au soleil. Ses dents sont parfaites, 
 * [Lui demander le nom] -> witch_name
 * [Lui demander l'objet (un peu de sang)] -> witch_object
 * [Lui demander le goût] -> witch_taste
-* [Refuser tout et partir] -> witch_visit
+* [Refuser tout et partir] -> witch_leave
 
-=== witch_visit ===
-Tu refermes la porte de la hutte. La sorcière ne te rappelle pas — mais ses yeux te suivent à travers les planches.
-
-* [Remonter au village] -> village
+=== witch_leave ===
+Tu refermes la porte de la hutte sans rien accepter. La sorcière ne te rappelle pas — mais ses yeux te suivent à travers les planches, jusqu'à ce que tu retrouves le pavé.
+-> village_alleys
 
 === witch_name ===
 La sorcière sourit, comme si elle te récompensait d'avoir choisi le moins gourmand.
 
 « Tellor. C'est le nom de l'homme qu'il faut que tu trouves dans la forêt, sous un grand chêne. Il a connu Mortimer plus que personne. Il te donnera un objet contre les peurs du spectre. »
 
+Tu refermes la porte derrière toi. Ses yeux te suivent à travers les planches jusqu'à ce que tu retrouves le pavé.
+
 # add_item: rumour_mortimer
 
-* [La remercier et partir] -> witch_visit
+* [Remonter au village] -> village_alleys
 
 === witch_object ===
 Elle t'incise le pouce avec une lame d'os et fait tomber trois gouttes dans une coupe de bois. Quand le sang touche le fond, la coupe rend une vapeur fine. Elle souffle dessus et pose dans ta paume un petit fagot d'os de poisson cousu d'un fil de cheveux blancs.
 
 « Quand tu sentiras qu'on regarde ton dos sans qu'il y ait personne, écrase ça dans ta main. Tu auras une seconde de mieux. »
 
+Tu glisses le fagot dans ta poche et tu sors. La ruelle te paraît plus étroite qu'à l'aller.
+
 # damage: 2
 # add_item: witch_fetish
 
-* [La remercier et partir] -> witch_visit
+* [Remonter au village] -> village_alleys
 
 === witch_taste ===
-La sorcière te tend un dé à coudre rempli d'un liquide brun et sucré qui sent la noix grillée.
+La sorcière te tend un dé à coudre rempli d’un liquide brun et sucré, qui exhale une odeur de noix grillée.
 
-« Bois ça. Ne demande pas. »
+« Bois sans poser de questions. »
 
-Tu bois. Le monde se réorganise un instant — les angles deviennent un peu plus nets, ton pouls remue moins vite, et tu sens qu'une lame qui te toucherait demain saurait mieux où mordre. Mais le breuvage est âpre, et tu tousses du sang dans ta paume avant de la refermer en poing.
+Tu bois. Le monde se recompose un instant — les contours se crispent, tout devient d’une netteté presque inquiétante. Ton pouls ralentit, comme s’il peinait à poursuivre sa course. Tu as la sensation qu’une lame, si elle te trouvait demain, saurait précisément où frapper. Mais le breuvage est âpre. Tu tousses, et du sang chaud éclabousse ta main avant que tu ne refermes le poing.
+
+Tu sors de la hutte les jambes mal assurées, et tu retrouves le pavé du village comme on revient d'un rêve.
 
 # add_item: witch_brew
 # skill_bonus: 1
 # damage: 3
 
-* [La remercier et partir] -> witch_visit
+* [Remonter au village] -> village_alleys
 
 
 // ---------- 2. La route ----------
 
 === village_depart ===
-Tu franchis la dernière maison de Roncebrune. Le pavé cède la place à une terre noire que les chariots ont creusée en deux ornières parallèles. Derrière toi, la fontaine se tait, et l'odeur de pain mouillé qu'on faisait cuire ce matin disparaît dans la pente.
+Tu franchis la dernière maison de Roncebrune. Le pavé cède la place à une terre noire que les chariots ont creusée en deux sillons parallèles. Derrière toi, la fontaine s’est tue, et l’odeur de pain humide, celui qu’on a cuit ce matin, se dissipe déjà.
 
-Tu te retournes une fois, juste avant la côte qui plonge sous les premiers pins. Maître Aldwin n'est pas sorti pour te saluer ; personne ne t'a accompagné jusqu'à la porte. C'est mieux ainsi, peut-être — les adieux qu'on ne fait pas sont ceux qu'on peut encore défaire.
+Tu te retournes une fois, juste avant la côte qui plonge sous les premiers pins. Maître Aldwin n'est pas sorti pour te saluer ; personne ne t’a accompagné jusqu’au seuil. C’est sans doute préférable — les adieux qu’on ne prononce pas sont ceux qui laissent encore la possibilité de revenir.
 
-Le sentier descend en lacets serrés, et le vent qui monte de la combe est plus frais que tu ne l'attendais.
+Le sentier s’enfonce en lacets serrés. Un vent frais, remontant de la combe, te fouette le visage.
 
 * [Marcher en silence] -> road
-* [Murmurer le nom de quelqu'un que tu laisses derrière toi] -> road
+* [Murmurer le nom de quelqu'un que tu laisses derrière toi] -> road_murmur
+
+=== road_murmur ===
+Tu prononces le nom à voix basse, une seule fois, et tu sens quelque chose se desserrer dans ta poitrine. Le vent l'emporte vers la combe. Quelque part, peut-être, on l'entend encore.
+
+# luck_bonus: 1
+
+-> road
 
 === road ===
 Tu quittes Roncebrune par la porte de l'est. La rosée alourdit l'herbe haute, et la forêt s'ouvre devant toi comme une gueule sombre. Pendant la première heure, tu n'entends que le vent dans les pins et le crissement de tes pas sur les aiguilles sèches.
 
 Puis tu repères une fumée mince, presque blanche, qui monte entre les branches à une centaine de pas. Quelqu'un, ou quelque chose, a fait un feu récemment.
 
+Tu progresses entre les pins, d’un pas souple. Les fougères te caressent les jambes, et le sentier s’enfonce dans un sous-bois plus dense, que les rayons du soleil peinent à pénétrer.
+
+À une trentaine de pas du foyer, un bruissement surgit sur ta droite. Trop sec pour un oiseau, trop léger pour un sanglier. Tu t’immobilises. Le silence retombe aussitôt — un silence qui n’a rien d’inoffensif.
+
+Une tension froide se glisse dans le bas de ton dos, celle qui annonce qu’on n’est plus seul. Tes doigts effleurent la garde de ton épée, sans la tirer encore. Trois pas passent.
+
+Puis le bruit revient, plus loin cette fois, déjà en train de s’éloigner.
+
 # chapter: forest
-
-* [Avancer prudemment] -> dark_path
-
-=== dark_path ===
-Tu progresses entre les pins, marches souples. Les fougères te frôlent les jambes, et le sentier s'enfonce dans un sous-bois plus dense, où les rayons de soleil arrivent par paquets obliques que la poussière fait briller.
-
-À une trentaine de pas du foyer, un bruissement sur ta droite. Trop sec pour un oiseau, trop léger pour un sanglier. Tu te fige. Le silence revient — un silence qui n'est pas vide.
-
-Tu sens, au creux des reins, cette tension froide qui prévient qu'on n'est plus seul. Tu touches du bout des doigts la garde de ton épée sans la dégainer encore. Trois pas. Puis le bruissement reprend, plus loin maintenant, qui s'éloigne.
 
 * [Continuer avec prudence vers la fumée] -> goblin_camp
 
@@ -401,33 +432,30 @@ Un gobelin éclaireur, accroupi entre deux ronces, fouille frénétiquement le d
 -> END
 
 === goblin_defeated ===
-La créature s'effondre dans un râle sec. Tu te baisses sur son cadavre encore chaud. Dans son sac : un quignon de pain moisi, trois cailloux peints, et une fiole de verre épais remplie d'un liquide ambré qui sent l'herbe et la résine.
-
-Tu en avales une petite gorgée. La fatigue de la marche s'envole d'un coup et tes plaies se referment à demi.
+La créature s'effondre dans un râle sec. Tu te baisses sur son cadavre encore chaud. Dans son sac : un quignon de pain moisi, trois cailloux peints, et une fiole de verre épais, qui sent l'herbe et la résine. Tu la glisses soigneusement dans ta ceinture.
 
 // On laisse exprès le joueur s'enfoncer un peu plus dans la forêt avant
 // d'atteindre le carrefour : la clairière offre 3 détours optionnels.
 
 # add_item: healing_potion
-# heal: 6
 
 * [Continuer dans la forêt] -> forest_clearing
 
 === bypass_goblin ===
-Tu te glisses entre les fougères sans un bruit. Le gobelin grogne dans son sac, dos tourné, ignorant ta présence à quelques pas seulement. Quand tu retrouves le sentier, ton cœur cogne encore mais tu n'as rien perdu.
+Tu te glisses entre les fougères sans un bruit. Le gobelin grogne dans son sac, le dos tourné, ignorant ta présence à quelques pas seulement. Tu finis par rejoindre le sentier, le cœur battant la chamade.
 
 * [Continuer dans la forêt] -> forest_clearing
 
 // ---------- 2bis. La clairière (hub forêt) ----------
 
 === forest_clearing ===
-Le sentier débouche sur une clairière en pente douce, ourlée de hêtres très vieux qui semblent t'observer. Trois pistes s'enfoncent sous les branches.
+Le sentier débouche sur une clairière en pente douce, ourlée de hêtres anciens qui semblent t'observer. Trois pistes s'enfoncent sous les branches.
 
-Au nord, des pierres dressées trouent les fougères en zigzag — un alignement sombre, presque humain dans la façon dont elles te regardent.
+Au nord, des pierres dressées trouent les fougères en un tracé brisé — un alignement sombre, presque humain dans leur manière de te fixer.
 
 À l'est, l'odeur d'une fumée de bois et d'un pain qui cuit te chatouille les narines. Quelqu'un campe par là.
 
-À l'ouest, le toit effondré d'une cabane se devine entre deux troncs noirs. Personne n'a remis le pied dedans depuis des années.
+À l’ouest, entre deux troncs noircis, se devine le toit effondré d’une cabane. Abandonnée depuis longtemps, elle n’a plus accueilli personne depuis des années.
 
 * {not forest_wolves} [Suivre l'alignement de pierres au nord] -> forest_wolves
 * {not forest_merchant} [Aller voir le campement à l'est] -> forest_merchant
@@ -440,7 +468,6 @@ Les pierres dressées forment un cercle imparfait. Une herbe rase et sèche les 
 Quatre loups maigres jaillissent d'entre les pierres, museaux écumants, oreilles plates. Ils ont eu faim trop longtemps. Tu sens leur regard ne pas se poser sur ton visage mais sur ta gorge.
 
 * [Tirer l'épée et tenir bon] -> fight_wolves
-* [Reculer lentement, dos aux pierres] -> wolves_flee
 
 === fight_wolves ===
 # combat: forest_wolves
@@ -452,7 +479,6 @@ Quatre loups maigres jaillissent d'entre les pierres, museaux écumants, oreille
 Le dernier loup s'écroule en travers d'un pied de pierre, langue pendante, et le silence remonte d'un coup. Tu reprends ton souffle, le bras en sang, et tu remarques alors ce que les bêtes gardaient sans le savoir : entre deux pierres, un petit ballot taché de moisi, qu'un voyageur a dû abandonner là il y a longtemps. Tu l'ouvres. Trois pièces, un mouchoir effiloché, et une poignée d'herbes vertes encore odorantes.
 
 # add_item: forest_herbs
-# heal: 3
 
 * [Retourner à la clairière] -> forest_clearing
 
@@ -469,7 +495,7 @@ Un mulet broute paisiblement près d'une carriole couchée sur le flanc, une rou
 « Béni soit qui m'aidera. La roue est cassée nette, et la nuit me rattrape. File-moi un coup de main et je te paie en denrées — ou en information, ou en chance, c'est selon ton goût. »
 
 * [L'aider à relever la carriole] -> merchant_help
-* {gold >= 1} [Lui offrir une pièce pour qu'il te laisse passer en paix] -> merchant_pay
+* [Lui offrir une pièce pour qu'il te laisse passer en paix ($1)] -> merchant_pay
 * [Continuer ton chemin sans t'attarder] -> forest_clearing
 
 === merchant_help ===
@@ -481,8 +507,7 @@ Il te glisse une fiole verte poisseuse dans la main et un petit objet de bois sc
 
 « La fiole, c'est de la décoction d'achillée — si tu prends un mauvais coup, bois ça. La boussole, ça aide à se retrouver dans la brume. Bonne route, jeune homme. »
 
-# add_item: healing_potion
-# add_item: hunter_compass
+# add_item: healing_potion, hunter_compass
 
 * [Le saluer et reprendre la piste] -> forest_clearing
 
@@ -491,7 +516,10 @@ Tu déposes une pièce dans sa paume. Il la fait sonner contre une autre, satisf
 
 « Que la chance te suive. La forêt, en ce moment, elle est pas dans son humeur la plus douce. »
 
+Il fait un geste rapide au-dessus de tes épaules, comme un vieux rite de marchand, et il glisse sous ton col une feuille séchée pliée en quatre.
+
 # spend_gold: 1
+# luck_bonus: 1
 
 * [Reprendre la piste vers la clairière] -> forest_clearing
 
@@ -504,14 +532,13 @@ Dedans : une lame courte, soigneusement huilée, qui n'a pas rouillé malgré le
 * [Laisser tomber, l'endroit te met mal à l'aise] -> forest_clearing
 
 === cabin_search ===
-La lame tient bien dans la main, plus fine que ton épée mais d'un acier qui chante quand tu la fais tournoyer. Le mot, lui, contient une seule phrase :
+La lame repose parfaitement dans ta paume, plus fine que ton épée, mais forgée dans un acier vif qui fredonne lorsque tu la fais tournoyer. Quant au billet, il ne porte qu’une seule phrase :
 
-« Si tu lis ceci, c'est que je n'en suis pas revenu. Ne descends pas sous les ruines sans une lampe. — Brann le Chasseur. »
+« Si tu lis ceci, c’est que je ne suis pas revenu. Ne descends pas sous les ruines sans préparation : les créatures qui dorment dans les bas fonds ne sont pas à prendre à la légère. — Brann le Chasseur. »
 
 Tu glisses la lame dans ta ceinture.
 
 # add_item: assassin_dagger
-# skill_bonus: 1
 
 * [Sortir et reprendre la piste] -> forest_clearing
 
@@ -550,7 +577,7 @@ Tellor pose une main sèche sur ton épaule.
 * [Le remercier et reprendre la route] -> crossroads
 
 === forest_old_tower ===
-Tu grimpes le sentier rocheux jusqu'aux ruines de la tour. La porte basse a disparu il y a longtemps — il ne reste qu'une arche écroulée. À l'intérieur, un escalier en colimaçon mange à demi par le lierre monte vers une plateforme à demi effondrée.
+Tu grimpes le sentier rocheux jusqu'aux ruines de la tour. La porte basse a disparu il y a longtemps — il ne reste qu'une arche écroulée. À l'intérieur, un escalier en colimaçon mangé à demi par le lierre monte vers une plateforme à moitié effondrée.
 
 L'air sent la pierre humide et la fiente d'oiseau. Sur une marche, un crâne humain blanchi par la pluie — un voyageur, peut-être, ou le guetteur d'autrefois.
 
@@ -608,7 +635,6 @@ La bête s'effondre dans un grondement qui finit en gargouillis. Tu reprends ton
 
 # add_item: boar_meat
 # skill_bonus: 1
-# heal: 3
 
 * [Retourner à la clairière profonde] -> deep_forest
 
@@ -656,7 +682,7 @@ Une voix sans corps te traverse :
 
 « Donne quelque chose et tu prendras quelque chose. »
 
-* {gold >= 2} [Y déposer deux pièces] -> sanctuary_gold
+* [Y déposer deux pièces ($2)] -> sanctuary_gold
 * [Y déposer la moitié de ton sang en mordant ta main] -> sanctuary_blood
 * [Ne rien donner, partir poliment] -> deep_forest
 
@@ -664,7 +690,7 @@ Une voix sans corps te traverse :
 Tu laisses tomber les deux pièces dans la fente. Elles ne sonnent pas. Tu sens une chaleur monter de l'autel, douce et lourde — comme si quelqu'un te posait une cape de plomb tiède sur les épaules.
 
 # spend_gold: 2
-# heal: 6
+# heal: 4
 # luck_restore
 
 * [Te redresser, te recueillir un instant, partir] -> deep_forest
@@ -686,7 +712,6 @@ Le loup a la taille d'un homme, et ce sont bien des mains de chair humaine qui d
 Un second lycanthrope, vivant, jaillit des fourrés. Il marche debout, mais c'est tout ce qu'il a d'humain. Sa gueule est plus large que la tienne.
 
 * [L'affronter] -> fight_lycanthrope
-* [Fuir, dos contre les fougères] -> lycanthrope_flee
 
 === fight_lycanthrope ===
 # combat: forest_lycanthrope
@@ -695,9 +720,9 @@ Un second lycanthrope, vivant, jaillit des fourrés. Il marche debout, mais c'es
 -> END
 
 === lycanthrope_defeated ===
-Le lycanthrope s'effondre sur le sien — étrange, deux frères tombés à la même place. Tu prends le temps de regarder. Sur le mort frais, autour du cou, un collier d'argent gravé d'un croissant. Tu le détaches.
+Le lycanthrope s'effondre sur le cadavre de son congénère — étrange, deux frères tombés à la même place. Tu prends le temps de regarder. Sur le mort frais, autour du cou, un collier d'argent gravé d'un croissant. Tu le détaches.
 
-L'argent te brûle légèrement la paume, comme si une charge en sortait. Tu sais maintenant que tu n'oublieras plus la couleur de la lune pleine.
+L'argent te brûle légèrement la paume, comme si une charge en sortait. Tu sais maintenant que tu n'oublieras plus l'éclat de la lune pleine.
 
 # add_item: lycan_pendant
 # stamina_bonus: 2
@@ -765,11 +790,15 @@ Un froissement de roseaux te fait tourner la tête. Trop tard. Un serpent géant
 
 Au même moment, à une vingtaine de pas, sur un radeau qui dérive dans la brume, une silhouette encapuchonnée te fait un signe lent de la main.
 
+{has_hunter_compass:
+La rose des vents tremble dans ta poche, insistante. Elle pointe vers la gauche — une langue de terre sèche, presque invisible sous la brume, qui contourne les roseaux et le serpent. Tu la vois maintenant que tu sais qu'elle est là.
+}
+
 # chapter: marsh
 
 * [Combattre le serpent maintenant]      -> fight_serpent
-* [Fuir vers les ruines]                  -> ruins_after_flee
 * [Faire signe à la silhouette]           -> marsh_merchant
+* {has_hunter_compass} [Suivre la boussole sur la langue de terre sèche ★] -> marsh_compass
 
 === marsh_merchant ===
 La marchande approche son radeau d'une perche silencieuse. Sous son capuchon, tu n'aperçois qu'une bouche, fendue d'un sourire trop fin. Elle déploie un étal de fortune sur le radeau : fioles troubles, dagues en os, runes gravées sur des vertèbres.
@@ -778,17 +807,16 @@ La marchande approche son radeau d'une perche silencieuse. Sous son capuchon, tu
 
 Le serpent gronde toujours dans les roseaux, prêt à frapper.
 
-* {gold >= 3} [Acheter la potion (3 pièces d'or)]   -> merchant_buy
+* [Acheter la potion (3 pièces d'or) ($3)]   -> merchant_buy
 * [Refuser et faire face au serpent]    -> fight_serpent
 
 === merchant_buy ===
-La marchande te tend une fiole verte poisseuse, attrape les pièces sans les regarder, et son radeau s'éloigne déjà avant que tu n'aies fini de boire. Le liquide brûle la gorge mais une force nouvelle se répand sous ta peau.
+La marchande te tend une fiole verte poisseuse, attrape les pièces sans les regarder, et son radeau s'éloigne déjà avant que tu n'aies repris ton souffle. Tu glisses la fiole sous ta cape — la garder bouchée vaut mieux que la boire pour rien.
 
 Le serpent attend toujours, sa langue dardée vers toi.
 
 # spend_gold: 3
 # add_item: healing_potion
-# heal: 6
 
 * [Affronter le serpent]                              -> fight_serpent
 * [Fuir tant qu'il en est encore temps]               -> ruins_after_flee
@@ -798,6 +826,13 @@ Le serpent attend toujours, sa langue dardée vers toi.
 # flee_to: ruins_after_flee
 # victory_path: serpent_defeated
 -> END
+
+=== marsh_compass ===
+Tu suis la rose des vents pas à pas, contournant l'eau noire par une crête de terre que la brume cachait. Le serpent siffle encore dans ton dos, déjà loin, et finit par retomber dans la vase. Tu n'y laisses ni sang ni cri — juste tes bottes alourdies de boue.
+
+Mais ce que la brume t'a fait éviter, elle te l'a aussi caché : tu sors du marais sans la clé de bronze que les autres voyageurs ont trouvée dans la vase. Tu devras te débrouiller autrement à l'entrée du tombeau.
+
+* [Reprendre la marche vers les ruines] -> ruins
 
 === serpent_defeated ===
 Tu écrases la tête du reptile entre deux pierres, à la fin d'un combat long et boueux. Ton bras tremble encore quand tu te relèves. Quelque chose brille dans la vase, près de l'endroit où le serpent s'est dressé pour la première fois.
@@ -840,14 +875,6 @@ Tu descends quelques marches usées dans une voûte basse, plus ancienne que cel
 Une silhouette voûtée se redresse soudain entre toi et le livre. Une goule, à demi humaine, à demi pourrie, dont les yeux blancs te fixent sans surprise.
 
 * [La combattre]                       -> fight_ghoul
-* [Reculer prudemment]                 -> ghoul_back
-
-=== ghoul_back ===
-Tu recules pas après pas, sans la quitter des yeux. Elle ne bondit pas — elle se contente de te griffer le mollet d'une main lente avant que tu n'atteignes l'escalier. La plaie sera longue à cicatriser.
-
-# damage: 2
-
-* [Remonter aux ruines] -> ruins
 
 === fight_ghoul ===
 # combat: tomb_ghoul
@@ -858,11 +885,9 @@ Tu recules pas après pas, sans la quitter des yeux. Elle ne bondit pas — elle
 === ghoul_defeated ===
 La goule s'effondre dans un râle de gorge sèche, et se replie sur elle-même comme un sac de cuir vide. Tu enjambes ses restes pour ramasser le grimoire. Quand tu l'ouvres, tu sens immédiatement quelque chose se débloquer en toi, comme une porte qui s'ouvre dans un mur que tu n'avais pas vu.
 
-Tes idées sont plus rapides. Ta Chance plus présente.
+Tes idées sont plus rapides, et tu sens que ce livre ne te quittera plus avant la fin de l'aventure.
 
 # add_item: forgotten_grimoire
-# luck_bonus: 1
-# luck_restore
 
 * [Remonter et reprendre ta quête] -> ruins
 
@@ -872,15 +897,12 @@ Tu passes sous l'arche de pierre noircie. Une volée de marches courtes s'enfonc
 L'air change deux fois. D'abord la fraîcheur normale des sous-sols. Puis, vers la trentième marche, un froid sec qui te pince la nuque et qui ne ressemble à aucune température connue. Ce n'est plus de l'air ordinaire que tu respires — c'est quelque chose qui attend.
 
 {has_tomb_map:
-Tu sors le plan grossier du tombeau. À la lueur de ta lampe, tu reconnais l'escalier principal, et tu vois où il débouche : sur une porte de fer gardée par deux silhouettes. Le plan annote, à l'encre sépia : « ne pas réveiller s'ils dorment ».
+Tu sors le plan grossier du tombeau. Tu reconnais l'escalier principal, et tu vois où il débouche : sur une porte de fer gardée par deux silhouettes. Le plan annote, à l'encre sépia : « ne pas réveiller s'ils dorment ».
 - else:
-Sans plan ni lampe, tu descends en tâtonnant, l'épaule contre la paroi humide. Tu comptes les marches jusqu'à perdre le compte.
+Sans plan, tu descends en tâtonnant, l'épaule contre la paroi humide. Tu comptes les marches jusqu'à perdre le compte.
 }
 
-* [Atteindre la dernière marche] -> tomb_entrance
-
-=== tomb_entrance ===
-L'escalier descend, marche après marche, dans un silence où ton souffle te paraît trop bruyant. L'air devient glacial. Au pied de la dernière marche : une lourde porte de fer, scellée par une chaîne, et devant elle, dressés comme s'ils t'attendaient depuis toujours, deux squelettes en armure rouillée. Leurs orbites vides te suivent.
+L'escalier finit par mourir. Au pied de la dernière marche : une lourde porte de fer, scellée par une chaîne, et devant elle, dressés comme s'ils t'attendaient depuis toujours, deux squelettes en armure rouillée. Leurs orbites vides te suivent.
 
 L'un d'eux tire sa lame en grinçant. L'autre lève un bouclier troué.
 
@@ -920,7 +942,7 @@ Près du seuil, à demi enseveli sous la poussière, un squelette est affalé co
 * [Continuer dans le couloir principal]   -> corridor
 
 === forgotten_library ===
-La porte cède dans un soupir, et tu entres dans une pièce envahie de poussière fine. Des étagères croulent sous des grimoires moisis, leurs reliures à demi mangées par les rats. Au centre, sur un pupitre de pierre, un volume est ouvert : ses pages parchemin sont noires d'encre fraîche, comme si quelqu'un venait juste de l'écrire.
+La porte cède dans un soupir, et tu entres dans une pièce envahie de poussière fine. Des étagères croulent sous des grimoires moisis, leurs reliures à demi mangées par les rats. Au centre, sur un pupitre de pierre, un volume est ouvert : ses pages de parchemin sont noires d'encre fraîche, comme si quelqu'un venait juste de l'écrire.
 
 Le silence est anormal. L'air ne sent pas la poussière, mais une humidité métallique.
 
@@ -935,13 +957,13 @@ Tu lis à mi-voix la première phrase. Les lettres se mettent à frémir sous te
 * [Refermer le livre, sortir, vite] -> corridor
 
 === corridor ===
-Un long couloir s'étire devant toi, ses dalles couvertes de motifs spiralés qu'on dirait gravés au couteau. Plusieurs portes y donnent, et même un cran d'escalier mort que la mousse a fini d'avaler.
+Un long couloir s'étire devant toi, ses dalles couvertes de motifs spiralés qu'on dirait gravés au couteau. Plusieurs portes y donnent, et même un pan d'escalier mort que la mousse a fini d'avaler.
 
 À mi-parcours sur ta gauche, une porte entrouverte laisse filtrer une lueur dorée — la lumière qui sort de là est trop chaude pour être naturelle.
 
 Plus loin sur ta droite, une autre porte massive, marquée d'un soleil noir, laisse passer une lueur glaciale et bleutée.
 
-Au fond à gauche, un boyau bas s'ouvre vers ce qui sonne comme de l'eau qui clapote.
+Au fond à gauche, un boyau bas s'ouvre vers un clapotis lointain d'eau.
 
 À droite encore, une porte gravée d'alambics et de cornues : un atelier, à n'en pas douter.
 
@@ -959,7 +981,7 @@ Ton plan grossier indique qu'au-delà du couloir, l'escalier principal mène à 
 === gallery_skeletons_scene ===
 Le boyau s'élargit en une galerie longue où des niches funéraires creusent le mur des deux côtés, tous les trois pas. La plupart sont vides. Quelques-unes contiennent encore un corps en armure rouillée, immobile, mais sans le sommeil d'un mort.
 
-À ton premier pas, une niche claque sec. Un squelette tombe d'à-pic au milieu du couloir, lame brandie. Deux autres se redressent dans tes cintres. Trois en tout, calmes et patients comme des choses qui attendent depuis longtemps.
+À ton premier pas, une niche claque sec. Un squelette tombe d'à-pic au milieu du couloir, lame brandie. Deux autres se redressent à tes flancs. Trois en tout, calmes et patients comme des choses qui attendent depuis longtemps.
 
 * [Continuer dans la galerie] -> fight_gallery
 * [Reculer vers le couloir] -> corridor
@@ -1023,7 +1045,7 @@ Tu débouches dans une chapelle profanée si petite qu'elle ressemble à un plac
 === mortimer_lab ===
 La porte cède dans un crissement et tu entres dans ce qui ressemble à l'atelier d'un alchimiste fou. Des étagères pliant sous le poids de fioles, de cornues, de chaudrons recouverts de poussière. Une table maculée de taches noires, où traîne encore une plume d'oie et un cahier ouvert sur des notes en latin de cuisine.
 
-L'air ici est lourd, chargé d'effluves âcres. Tu tousses dès tes premiers pas.
+L'air ici est saturé de vapeurs âcres — un demi-siècle d'alchimie qui n'a jamais cessé de fermenter dans les fioles ouvertes. Tu inspires malgré toi et un haut-le-cœur te plie en deux ; tes poumons brûlent. Tu perds un point d'Endurance avant d'avoir touché à quoi que ce soit.
 
 # damage: 1
 
@@ -1034,7 +1056,7 @@ Sur le cahier, une page t'attire l'œil : un dessin de porte, marquée de trois 
 * [Sortir au plus vite, l'air te tord les poumons] -> corridor
 
 === lab_search ===
-Tu écarte les flacons un à un. La plupart sont brisés ou ne contiennent plus qu'une croûte sèche. Mais dans une boîte de bois calcinée, tu mets la main sur une petite tablette d'argile gravée de trois signes — la rune-clé.
+Tu écartes les flacons un à un. La plupart sont brisés ou ne contiennent plus qu'une croûte sèche. Mais dans une boîte de bois calcinée, tu mets la main sur une petite tablette d'argile gravée de trois signes — la rune-clé.
 
 # add_item: runic_key
 
@@ -1068,7 +1090,7 @@ Tu tâtes l'empreinte du bout des doigts. Le bronze refuse de céder, et tu n'as
 Tu descends un escalier brutal dans une caverne naturelle dont les parois sont couvertes d'écailles fossilisées. Au centre, dans une mare d'eau noire, une créature lovée sur elle-même se redresse à ton approche — un basilic de la taille d'un poney, gueule fendue d'un sourire de hyène, yeux qui brillent d'une lumière jaune-blanc.
 
 {has_tarnished_mirror:
-Tu sors le miroir terni et tu en oriente l'éclat vers le basilic. Il siffle, recule, ses yeux ne supportent pas sa propre image. Tu as ton ouverture.
+Tu sors le miroir terni et tu en orientes l'éclat vers le basilic. Il siffle, recule, ses yeux ne supportent pas sa propre image. Tu as ton ouverture.
 }
 {not has_tarnished_mirror:
 Tu détournes les yeux du regard de la bête juste à temps. Un froid bizarre te traverse la nuque — un instant de plus et tu te serais pétrifié.
@@ -1094,8 +1116,8 @@ Tu remontes l'escalier en titubant, dos collé au mur. Le sifflement de la créa
 Le basilic s'effondre dans un sifflement qui s'éteint dans la mare. Tu fouilles la berge et tu trouves, presque enseveli dans la vase, un coffret d'os fermé d'une serrure d'argent. Il contient une fiole épaisse et tiède : du sang de basilic, dont la légende dit qu'il rend la vue plus claire que la lumière du jour.
 
 # add_item: basilisk_blood
-# skill_bonus: 1
-# heal: 4
+# luck_bonus: 1
+# heal: 3
 
 * [Remonter au couloir] -> corridor
 
@@ -1123,17 +1145,17 @@ Tu remplis ta bourse de pièces, en silence, avec un sang-froid qui ne te ressem
 === guardian_defeated ===
 Le gardien se déchire en poussière et retombe sur lui-même, vidant le sarcophage de son occupant pour de bon. Le froid reflue. Tu pars d'un pas plus lourd, ta bourse alourdie d'un or qui ne t'a pas tout à fait pardonné.
 
-* [Retourner au couloir] -> trap_room
+* [Retourner au couloir] -> corridor
 
 === treasure_respected ===
 Tu poses une main sur la pierre froide du sarcophage et tu inclines la tête, longuement. Quelque chose dans la salle se relâche, comme un mur qui aurait retenu son souffle. Sur la pierre noire, un petit objet apparaît — un talisman gris-cendre, simple, qui semble t'attendre. Tu le glisses dans ta poche.
 
-Une vague de chaleur t'envahit, comme si tu venais de boire.
+Une vague de chaleur t'envahit, comme si tu venais d'avaler une gorgée d'eau-de-vie.
 
 # add_item: dead_lord_talisman
-# heal: 4
+# heal: 3
 
-* [Retourner au couloir] -> trap_room
+* [Retourner au couloir] -> corridor
 
 === forgotten_chapel ===
 Une chapelle profanée. Le sol est jonché d'ossements rangés en cercles concentriques — un esprit méticuleux a passé du temps là. Au centre, un autel à la pierre noircie. Au-dessus, flottant à hauteur d'un homme, une silhouette spectrale dont le crâne s'incline lentement vers toi.
@@ -1143,14 +1165,6 @@ Sa voix résonne directement dans ta tête, sans passer par tes oreilles :
 « Reste, mortel. Mille ans à attendre, c'est long. Tiens-moi compagnie. »
 
 * [L'affronter pour briser le sortilège]      -> fight_spirit
-* [Reculer doucement et refermer la porte]    -> spirit_back
-
-=== spirit_back ===
-Tu fais un pas en arrière, puis un autre, en murmurant quelque chose qui ne ressemble à aucune prière connue. La silhouette ne te suit pas, mais son regard noir te traverse jusqu'à l'os — quand tu refermes la porte, tu sens qu'une partie de toi est restée à l'intérieur.
-
-# damage: 2
-
-* [Reprendre le couloir] -> corridor
 
 === fight_spirit ===
 # combat: vengeful_spirit
@@ -1164,10 +1178,10 @@ La silhouette se déchire dans un cri silencieux et s'évapore en brume bleutée
 Tu en bois une gorgée. Une chaleur cuivrée et étrange descend dans tes veines. Tu sens, brièvement, comme une présence amicale derrière toi, mais quand tu te retournes, il n'y a personne.
 
 # add_item: spirit_blood
-# heal: 8
+# heal: 5
 # luck_restore
 
-* [Retourner au couloir] -> trap_room
+* [Retourner au couloir] -> corridor
 
 // ---------- 5bis. Aile sud du tombeau (Maison de l'Enfer) ----------
 
@@ -1242,33 +1256,30 @@ La rose des vents s'agite faiblement dans ta poche. Elle pointe net vers le pass
 === mirror_pass_brave ===
 Tu passes l'arche de droite. Le couloir se rétrécit, les miroirs disparaissent, et tu débouches dans un nouveau passage qui descend doucement. Le sol ici est plus régulier — tu sens que tu as choisi la bonne sortie.
 
+Tu sors dans une voûte basse, plus calme, et un boyau familier te ramène à l'antichambre de l'aile sud.
+
 # luck_restore
 
-* [Continuer plus profond] -> south_low_vault
+* [Retourner à l'antichambre] -> south_wing
 
 === mirror_pass_pious ===
 Tu franchis l'arche. Les miroirs s'épanouissent autour de toi comme des éclats de verre figés. Tu fais trois pas, et puis un seul reflet — celui qui est devant toi — lève un bras au moment où tu ne le lèves pas.
 
 Tu te retournes. Quelque chose te tape sur l'épaule par-derrière, mais quand tu te retournes encore il n'y a rien que toi qui te regardes de partout.
 
-Quand tu sors enfin par une porte qui n'existe pas dans tous les reflets, tu as la tête lourde et le bras qui tremble.
+Quand tu sors enfin par une porte qui n'existe pas dans tous les reflets, tu as la tête lourde et le bras qui tremble. Un boyau étroit te ramène à l'antichambre de l'aile sud.
 
 # damage: 3
 # luck_test
 
-* [Continuer plus profond] -> south_low_vault
+* [Retourner à l'antichambre] -> south_wing
 
 === mirror_shatter ===
 Tu écrases ton pommeau dans le miroir le plus proche. L'éclat te taillade l'avant-bras, mais quelque chose dans la salle se *décolle*. Le reflet de l'amulette au centre s'éteint d'un coup. Les autres miroirs se brouillent.
 
-Tu vois alors la vraie sortie — celle de gauche, la seule qui n'était pas une boucle. Tu y vas droit.
+Tu vois alors la vraie sortie — celle de gauche, la seule qui n'était pas une boucle. Tu y vas droit, et un boyau étroit te ramène à l'antichambre de l'aile sud.
 
 # damage: 2
-
-* [Quitter la salle des miroirs] -> south_low_vault
-
-=== south_low_vault ===
-Tu sors des miroirs dans une voûte basse, plus calme, et tu retournes par le passage qui te ramène à l'antichambre de l'aile sud.
 
 * [Retourner à l'antichambre] -> south_wing
 
@@ -1337,7 +1348,7 @@ Les chuchotements deviennent un murmure unique, presque doux.
 Quelque chose en toi se desserre. Tu ne sais pas si c'est la peur, ou un nœud qui aurait toujours été là.
 
 # luck_restore
-# heal: 4
+# heal: 3
 
 * [Sortir] -> south_wing
 
@@ -1432,8 +1443,7 @@ Le spectre se dissipe en un cri inhumain qui se prolonge longtemps dans la voût
 Elle est plus lourde qu'elle n'en a l'air. Beaucoup plus.
 
 # add_item: amulet
-
-* [Sortir du tombeau] -> tomb_exit
+-> tomb_exit
 
 === flee_attempt ===
 Tu plonges en avant, bras tendu vers l'amulette. Mortimer hurle. Le temps semble se ralentir. Tes doigts effleurent le métal — ou est-ce le métal qui te frôle ?
@@ -1441,8 +1451,7 @@ Tu plonges en avant, bras tendu vers l'amulette. Mortimer hurle. Le temps semble
 Tu tentes ta Chance.
 
 # luck_grab_amulette
-
-* [Sortir du tombeau avec l'amulette] -> tomb_exit
+-> tomb_exit
 
 
 // ---------- 6. Sortie & épilogue ----------
@@ -1450,14 +1459,7 @@ Tu tentes ta Chance.
 === tomb_exit ===
 Tu remontes les marches du tombeau plus vite que tu ne les avais descendues, l'amulette serrée contre ta poitrine. Le froid lâche prise marche après marche, et quand tu débouches enfin à l'air libre, le jour t'éblouit. Tu mets longtemps à reconnaître les arbres, les nuages, le bruit du vent dans la forêt.
 
-Tu prends le chemin du retour. Roncebrune n'est plus qu'à quelques heures de marche.
-
-# chapter: homecoming
-
-* [Continuer vers Roncebrune] -> return_road
-
-=== return_road ===
-Tu marches longtemps. Les premières heures, tu ne sens rien d'autre que tes jambes et le poids de l'amulette qui bat doucement contre ta poitrine. Tu t'arrêtes près d'un ruisseau pour boire, et tu vois ton reflet : un visage que tu ne reconnais plus tout à fait, plus dur, plus tranchant. Mortimer t'a marqué d'une façon que ton miroir saura un jour te montrer.
+Tu prends le chemin du retour, marchant longtemps. Les premières heures, tu ne sens rien d'autre que tes jambes et le poids de l'amulette qui bat doucement contre ta poitrine. Tu t'arrêtes près d'un ruisseau pour boire, et tu vois ton reflet : un visage que tu ne reconnais plus tout à fait, plus dur, plus tranchant. Mortimer t'a marqué d'une façon que ton miroir saura un jour te montrer.
 
 L'après-midi se fait soir. Tu retraverses la forêt à l'envers, et chaque endroit que tu reconnais te paraît plus petit qu'à l'aller. La clairière où tu as combattu, le carrefour où tu as choisi, la route où tu as compté tes pas — tout s'est rétréci.
 
@@ -1469,6 +1471,8 @@ Le charme du sage palpite encore contre ta poitrine. Quelque part, sous un grand
 }
 
 Quand tu vois enfin la fumée du village monter au creux de la combe, le soleil est presque couché.
+
+# chapter: homecoming
 
 * [Avancer vers la place] -> village_return
 

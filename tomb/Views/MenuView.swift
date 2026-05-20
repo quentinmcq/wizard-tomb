@@ -12,6 +12,9 @@ struct MenuView: View {
     @ObservedObject var audio: AmbientAudio
 
     @State private var showingSettings = false
+    @State private var showingEndings = false
+    @State private var showingBestiary = false
+    @State private var showingAchievements = false
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
@@ -31,6 +34,13 @@ struct MenuView: View {
                     .padding(.bottom, 18)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .onAppear {
+                // Démarre l'ambiance dès l'affichage du menu : le drone doit
+                // poser l'atmosphère avant même que le joueur ne clique sur
+                // "Commencer". Idempotent côté `AmbientAudio` (guard sur
+                // `isPlaying`), donc safe si la vue réapparaît plus tard.
+                audio.start()
+            }
             .padding(.horizontal, 24)
 
             settingsButton
@@ -68,6 +78,15 @@ struct MenuView: View {
         .sheet(isPresented: $showingSettings) {
             SettingsView(session: session, audio: audio)
         }
+        .sheet(isPresented: $showingEndings) {
+            EndingsView(discovered: session.discoveredEndings)
+        }
+        .sheet(isPresented: $showingBestiary) {
+            BestiaryView(defeated: session.defeatedEnemies)
+        }
+        .sheet(isPresented: $showingAchievements) {
+            AchievementsView(unlocked: session.unlockedAchievements)
+        }
     }
 
     // MARK: - Réglages
@@ -76,9 +95,7 @@ struct MenuView: View {
         Button {
             showingSettings = true
         } label: {
-            Image(systemName: "gearshape.fill")
-                .font(.system(size: 17, weight: .semibold))
-                .foregroundColor(Theme.ink)
+            Theme.icon("settings", size: 17, color: Theme.ink)
                 .frame(width: 40, height: 40)
                 .background(
                     Circle()
@@ -158,8 +175,8 @@ struct MenuView: View {
 
     @ViewBuilder
     private var actions: some View {
-        if session.hasSavedGame {
-            VStack(spacing: 10) {
+        VStack(spacing: 10) {
+            if session.hasSavedGame {
                 MenuPrimaryButton(label: "Reprendre l'aventure",
                                   icon: "play.fill") {
                     audio.start()
@@ -169,14 +186,36 @@ struct MenuView: View {
                     audio.start()
                     session.startCharacterCreation()
                 }
+            } else {
+                MenuPrimaryButton(label: "Commencer l'aventure",
+                                  icon: "play.fill") {
+                    audio.start()
+                    session.startCharacterCreation()
+                }
             }
-        } else {
-            MenuPrimaryButton(label: "Commencer l'aventure",
-                              icon: "play.fill") {
-                audio.start()
-                session.startCharacterCreation()
+            metaProgressionRow
+        }
+    }
+
+    /// Petite barre de boutons « Tes aventures » / « Bestiaire » / « Hauts
+    /// faits » sous les actions principales. Style discret pour ne pas voler
+    /// la vedette à l'action principale mais visibles dès l'accueil.
+    private var metaProgressionRow: some View {
+        HStack(spacing: 6) {
+            MenuTertiaryButton(label: "Aventures",
+                               icon: "adventures") {
+                showingEndings = true
+            }
+            MenuTertiaryButton(label: "Bestiaire",
+                               icon: "bestiary") {
+                showingBestiary = true
+            }
+            MenuTertiaryButton(label: "Hauts faits",
+                               icon: "achievements") {
+                showingAchievements = true
             }
         }
+        .padding(.top, 2)
     }
 
     // MARK: - Footer
@@ -265,6 +304,48 @@ struct MenuSecondaryButtonStyle: ButtonStyle {
                     .stroke(Theme.parchmentLight.opacity(0.4), lineWidth: 0.6)
             )
             .opacity(configuration.isPressed ? 0.9 : 1)
+            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
+            .playsButtonTap(isPressed: configuration.isPressed)
+    }
+}
+
+/// Bouton "tertiaire" du menu : compact, fond parchemin transparent, sert
+/// aux accès méta-progression (fins découvertes, bestiaire). Volontairement
+/// discret pour ne pas marcher sur les pieds des boutons d'action principaux.
+struct MenuTertiaryButton: View {
+    let label: String
+    let icon: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                // Theme.icon intercepte les PNG du bundle (adventures,
+                // bestiary, achievements) et retombe sur SF Symbol sinon.
+                Theme.icon(icon, size: 11, color: Theme.parchmentLight.opacity(0.85))
+                Text(label)
+                    .font(Theme.display(11))
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 9)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(MenuTertiaryButtonStyle())
+    }
+}
+
+struct MenuTertiaryButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .foregroundColor(Theme.parchmentLight.opacity(0.85))
+            .background(
+                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                    .fill(Theme.parchmentLight.opacity(configuration.isPressed ? 0.20 : 0.10))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                    .stroke(Theme.parchmentLight.opacity(0.30), lineWidth: 0.5)
+            )
             .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
             .playsButtonTap(isPressed: configuration.isPressed)
     }

@@ -56,20 +56,30 @@ struct SettingsView: View {
     private var audioSection: some View {
         SettingsSection(title: "Audio") {
             SettingsToggleRow(
-                icon: "speaker.wave.2.fill",
+                icon: "sound",
                 iconTint: Theme.inkBlue,
                 label: "Ambiance sonore",
-                hint: "Drone d'ambiance en fond pendant l'aventure.",
+                hint: "Musique d'ambiance pendant l'aventure.",
                 isOn: $audio.ambientEnabled
             )
+            if audio.ambientEnabled {
+                SettingsVolumeRow(label: "Volume ambiance",
+                                  value: $audio.ambientVolume,
+                                  tint: Theme.inkBlue)
+            }
             SettingsDivider()
             SettingsToggleRow(
                 icon: "dice.fill",
                 iconTint: Theme.verdigris,
                 label: "Effets sonores",
-                hint: "Dés, coups, ramassages, jets de Chance.",
+                hint: "Dés, coups, jets de dés, etc.",
                 isOn: $audio.effectsEnabled
             )
+            if audio.effectsEnabled {
+                SettingsVolumeRow(label: "Volume effets",
+                                  value: $audio.effectsVolume,
+                                  tint: Theme.verdigris)
+            }
         }
     }
 
@@ -213,9 +223,10 @@ private struct SettingsToggleRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: icon)
-                .foregroundColor(iconTint)
-                .font(.system(size: 14))
+            // Theme.icon route automatiquement vers les PNG du bundle
+            // (sound, ...) ou retombe sur SF Symbol — permet aux call
+            // sites de mélanger les deux conventions sans changer le type.
+            Theme.icon(icon, size: 14, color: iconTint)
                 .frame(width: 22)
             VStack(alignment: .leading, spacing: 2) {
                 Text(label)
@@ -235,5 +246,34 @@ private struct SettingsToggleRow: View {
         }
         .padding(.vertical, 10)
         .padding(.horizontal, 14)
+    }
+}
+
+/// Ligne curseur de volume, affichée sous chaque toggle audio quand celui-ci
+/// est activé. Valeur 0..1 — affichée en pourcentage à droite pour donner
+/// un repère chiffré au joueur.
+private struct SettingsVolumeRow: View {
+    let label: String
+    @Binding var value: Float
+    let tint: Color
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Theme.icon("sound", size: 10, color: tint.opacity(0.7))
+                .frame(width: 22)
+            Text(label)
+                .font(Theme.display(11))
+                .foregroundColor(Theme.inkFaded)
+            Slider(value: $value, in: 0...1)
+                .tint(tint)
+            Text("\(Int(value * 100)) %")
+                .font(.system(size: 11, weight: .semibold, design: .serif))
+                .foregroundColor(Theme.ink)
+                .monospacedDigit()
+                .frame(width: 42, alignment: .trailing)
+        }
+        .padding(.vertical, 4)
+        .padding(.horizontal, 14)
+        .padding(.bottom, 6)
     }
 }

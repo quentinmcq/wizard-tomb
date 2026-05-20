@@ -60,13 +60,22 @@ enum SoundSynth {
     }
 
     private static func heal(format: AVAudioFormat) -> AVAudioPCMBuffer? {
-        // Deux notes ascendantes douces (G5, C6), attack plus lent.
-        return synth(format: format, durationS: 0.55) { t in
-            let n1 = noteEnv(t: t, start: 0.00, attack: 0.05, decay: 0.40)
-            let n2 = noteEnv(t: t, start: 0.18, attack: 0.05, decay: 0.40)
-            let s1 = sine(784.0,  t) * 0.32 * n1
-            let s2 = sine(1046.5, t) * 0.32 * n2
-            return s1 + s2
+        // Soin / consommable bu : attaque lente (~180 ms), accord chaud
+        // C4 + G4 + octave aigu discret, decay long. Évite l'effet "cling"
+        // métallique de l'ancienne version (deux notes brillantes) qui
+        // sonnait artificiel pour boire une herbe.
+        return synth(format: format, durationS: 0.95) { t in
+            // Enveloppes : root attaque lente, quinte légèrement décalée,
+            // shimmer haut qui ne démarre qu'à mi-parcours pour respirer.
+            let envRoot   = noteEnv(t: t, start: 0.00, attack: 0.18, decay: 0.65)
+            let envFifth  = noteEnv(t: t, start: 0.05, attack: 0.20, decay: 0.60)
+            let envShine  = noteEnv(t: t, start: 0.30, attack: 0.12, decay: 0.35)
+            let root  = sine(261.6, t) * 0.22 * envRoot   // C4
+            let fifth = sine(392.0, t) * 0.18 * envFifth  // G4
+            let shine = sine(1046.5, t) * 0.06 * envShine // C6 (sparkle léger)
+            // Souffle discret façon "exhale" qui s'éteint vite.
+            let breath = Double.random(in: -1...1) * 0.03 * exp(-t * 6)
+            return root + fifth + shine + breath
         }
     }
 
@@ -166,14 +175,17 @@ enum SoundSynth {
     }
 
     private static func buttonTap(format: AVAudioFormat) -> AVAudioPCMBuffer? {
-        // Très court "tic" sec, mid-haut, façon plume qui se pose sur la page.
-        // Decay agressif pour ne pas se traîner et rester discret par-dessus
-        // les autres sons (musique, dés…).
-        return synth(format: format, durationS: 0.07) { t in
-            let env = exp(-t * 90)
-            let click = Double.random(in: -1...1) * 0.35 * env
-            let tone = sine(1900.0, t) * 0.14 * env
-            return click + tone
+        // "Thunk" chaud et bref — comme un doigt qui pose une pièce sur du
+        // bois. Plus grave que la version précédente (800 Hz au lieu de
+        // 1900 Hz), bruit blanc divisé par 3, decay un peu plus long pour
+        // arrondir l'attaque. Doit rester sous le seuil de fatigue auditive
+        // sur usage répétitif (1 clic par paragraphe).
+        return synth(format: format, durationS: 0.10) { t in
+            let env = exp(-t * 30)
+            let click = Double.random(in: -1...1) * 0.10 * env
+            let tone  = sine(800.0, t) * 0.16 * env
+            let sub   = sine(400.0, t) * 0.10 * env
+            return click + tone + sub
         }
     }
 

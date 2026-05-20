@@ -9,17 +9,38 @@ import Foundation
 
 enum EnemyCatalog {
 
+    /// Court paragraphe descriptif affiché dans le bestiaire, une fois
+    /// l'ennemi vaincu. Indexé par le même id que `all`.
+    static let lore: [String: String] = [
+        "goblin_scout": "Petit rôdeur des sous-bois, vivant de carrioles renversées et de hachettes ébréchées. Tu en as rencontré un seul — il en court bien d'autres.",
+        "marsh_serpent": "Reptile gris-vert, long comme deux hommes, qui dort sous la vase et frappe sans avertir. Sa langue mouille le visage avant la morsure.",
+        "skeleton_guardians": "Deux squelettes en armure rouillée, dressés depuis cinquante ans devant la porte de fer du tombeau. Ils ne respirent plus, mais ils savent encore se battre.",
+        "treasure_guardian": "Ombre de pierre qui se condense au-dessus du sarcophage volé. Bras de gravier, voix de poussière : il vient pour reprendre ce qui ne t'appartenait pas.",
+        "tomb_ghoul": "Silhouette voûtée, à demi humaine, à demi pourrie. Vit dans une crypte oubliée. Garde un grimoire qu'elle ne lit plus depuis longtemps.",
+        "vengeful_spirit": "Crâne flottant sous une voûte couverte d'os concentriques. Mille ans d'attente lui ont appris à parler dans la tête au lieu des oreilles.",
+        "mortimer_spectre": "Sorcier scellé dans son propre tombeau il y a cinquante ans. Il ricane d'un rire sans gorge. À chacun, il décide entre les sacs et les urnes.",
+        "mortimer_spectre_phase1": "Enveloppe spectrale de Mortimer — ce qu'il laisse à la surface pour décourager les premiers venus. À demi pliée, presque douce.",
+        "mortimer_spectre_phase2": "Mortimer déchaîné, déployé en pleine taille. Les fresques effacées brillent autour de lui d'un trait noir. Tu as su le faire reculer — il te montre maintenant ce qu'il est vraiment.",
+        "forest_wolves": "Quatre loups maigres, oreilles plates, qui n'ont pas mangé depuis trop longtemps. Leur regard ne se pose pas sur ton visage — il se pose sur ta gorge.",
+        "gallery_skeletons": "Trois squelettes dont les niches funéraires servaient autrefois de cachettes. Calmes et patients comme des choses qui attendent depuis longtemps.",
+        "flooded_eels": "Anguilles cuirassées qui glissent sous une eau noire. Leurs gueules tiennent plus de dents que tu n'en as jamais comptées.",
+        "tomb_basilisk": "Créature lovée dans une mare d'eau noire, sourire de hyène, regard jaune-blanc. Mortimer l'a élevée pour pétrifier les indiscrets.",
+        "forest_boar": "Bête énorme, défenses jaunies par les années, plus haute que toi à l'épaule. Ses yeux ne sont pas hostiles — juste lents.",
+        "forest_lycanthrope": "Loup-garou marchant debout, mais c'est tout ce qu'il a d'humain. Sa gueule est plus large que la tienne. Une rangée de griffes parfaitement humaines.",
+        "pit_skeletons": "Squelettes recomposés en silence dans une fosse circulaire. Le quatrième se reforme vertèbre après vertèbre pendant que tu te défends contre les trois autres."
+    ]
+
     static let all: [String: Enemy] = [
         "goblin_scout": Enemy(
             id: "goblin_scout",
             name: "Gobelin éclaireur",
-            skill: 5,
-            stamina: 4
+            skill: 6,
+            stamina: 5
         ),
         "marsh_serpent": Enemy(
             id: "marsh_serpent",
             name: "Serpent des marais",
-            skill: 6,
+            skill: 7,
             stamina: 5
         ),
         "skeleton_guardians": Enemy(
@@ -32,7 +53,9 @@ enum EnemyCatalog {
             id: "treasure_guardian",
             name: "Gardien du trésor",
             skill: 8,
-            stamina: 9
+            stamina: 9,
+            damageBonus: 1,
+            abilityNote: "Poigne de pierre — +1 dégât par coup"
         ),
         "tomb_ghoul": Enemy(
             id: "tomb_ghoul",
@@ -62,7 +85,9 @@ enum EnemyCatalog {
             id: "mortimer_spectre_phase2",
             name: "Mortimer déchaîné",
             skill: 10,
-            stamina: 11
+            stamina: 11,
+            damageBonus: 1,
+            abilityNote: "Souffle spectral — +1 dégât par coup"
         ),
 
         // ----- Forêt (chap. II) -----
@@ -101,13 +126,17 @@ enum EnemyCatalog {
             id: "forest_boar",
             name: "Sanglier titanesque",
             skill: 7,
-            stamina: 8
+            stamina: 8,
+            damageBonus: 1,
+            abilityNote: "Charge brutale — +1 dégât par coup"
         ),
         "forest_lycanthrope": Enemy(
             id: "forest_lycanthrope",
             name: "Lycanthrope",
-            skill: 9,
-            stamina: 9
+            skill: 8,
+            stamina: 8,
+            damageBonus: 1,
+            abilityNote: "Griffes acérées — +1 dégât par coup"
         ),
 
         // ----- Aile sud du tombeau -----

@@ -314,20 +314,27 @@ struct DiceRollOverlay: View {
                 diceRow("TOI",
                         dice: pDice,
                         skillBonus: pSkill,
-                        tint: Theme.inkBlue)
+                        tint: Theme.inkBlue,
+                        showsExtremeChip: true)
                 Text("vs")
                     .font(.system(size: 12, weight: .semibold, design: .serif))
                     .foregroundColor(Theme.inkFaded)
+                // Le chip "crit / échec" n'a de sens qu'à la première
+                // personne. Côté ennemi, "× échec ×" sous ses dés laissait
+                // croire au joueur que C'EST LUI qui avait raté son jet —
+                // on supprime le chip pour la row ennemie.
                 diceRow("ENNEMI",
                         dice: eDice,
                         skillBonus: eSkill,
-                        tint: Theme.blood)
+                        tint: Theme.blood,
+                        showsExtremeChip: false)
 
             case .luck(let dice):
                 diceRow("CHANCE",
                         dice: dice,
                         skillBonus: nil,
-                        tint: Theme.oldGold)
+                        tint: Theme.oldGold,
+                        showsExtremeChip: true)
             }
         }
         .frame(maxWidth: .infinity)
@@ -354,12 +361,17 @@ struct DiceRollOverlay: View {
     /// One row: label on the left, two dice in the middle, total on the
     /// right. If a `skillBonus` is provided (attack roll), the right side
     /// shows the breakdown "diceSum + skill" under the final total.
+    /// `showsExtremeChip` détermine si on affiche le chip « ★ crit ★ » /
+    /// « × échec × » — désactivé côté ennemi pour ne pas troubler le sens.
     private func diceRow(_ label: String,
                           dice: (Int, Int),
                           skillBonus: Int?,
-                          tint: Color) -> some View {
+                          tint: Color,
+                          showsExtremeChip: Bool) -> some View {
         let diceSum = dice.0 + dice.1
         let total = diceSum + (skillBonus ?? 0)
+        let isCrit = diceSum == 12
+        let isFumble = diceSum == 2
 
         return HStack(spacing: 10) {
             Text(label)
@@ -377,31 +389,65 @@ struct DiceRollOverlay: View {
             totalColumn(diceSum: diceSum,
                         skillBonus: skillBonus,
                         total: total,
-                        tint: tint)
+                        tint: tint,
+                        isCrit: isCrit,
+                        isFumble: isFumble,
+                        showsExtremeChip: showsExtremeChip)
                 .frame(width: 54, alignment: .trailing)
         }
+        .padding(.vertical, 6)
+        .padding(.horizontal, 8)
+        // Les libellés TOI / ENNEMI / CHANCE sont déjà colorés (tint) et
+        // suffisent à différencier les rows — pas besoin de fond teinté
+        // en plus, qui faisait "carré de couleur" un peu plaqué sur le
+        // parchemin.
     }
 
     private func totalColumn(diceSum: Int,
                               skillBonus: Int?,
                               total: Int,
-                              tint: Color) -> some View {
+                              tint: Color,
+                              isCrit: Bool,
+                              isFumble: Bool,
+                              showsExtremeChip: Bool) -> some View {
         ZStack {
             if sumsRevealed {
                 VStack(alignment: .trailing, spacing: 0) {
                     Text("\(total)")
-                        .font(.system(size: 20, weight: .bold, design: .serif))
-                        .foregroundColor(tint)
+                        .font(.system(size: isCrit ? 26 : 20,
+                                      weight: .bold,
+                                      design: .serif))
+                        .foregroundColor(isFumble ? Theme.inkFaded : tint)
                         .monospacedDigit()
+                        // #1 — Halo doré sur 12, gris-éteint sur 2. Le jet
+                        // critique reste visuellement marqué dans les deux
+                        // rows (utile pour le joueur de voir qu'un crit
+                        // ennemi va faire mal).
+                        .shadow(color: isCrit ? Theme.oldGold.opacity(0.9) : .clear,
+                                radius: isCrit ? 6 : 0)
                     if let skill = skillBonus {
                         Text("\(diceSum) + \(skill)")
                             .font(.system(size: 9, weight: .regular, design: .serif))
                             .foregroundColor(Theme.inkFaded)
                             .monospacedDigit()
                     }
+                    // Chip "★ crit ★" sur 12 — uniquement à la première
+                    // personne (row "TOI" ou "CHANCE"), côté ennemi on
+                    // l'omet pour ne pas confondre le joueur. Le chip
+                    // « × échec × » sur 2 a été retiré : il alourdissait
+                    // la lecture sans rien apporter (le chiffre 2 +
+                    // l'effet visuel "fumble" suffisent à signaler le
+                    // résultat).
+                    if showsExtremeChip, isCrit {
+                        Text("★ crit ★")
+                            .font(Theme.display(8))
+                            .foregroundColor(Theme.oldGold)
+                    }
                 }
                 .transition(.opacity.combined(with: .scale(scale: 0.5)))
             } else {
+                // #3 — Placeholder « ? » pendant que les dés tournent. Le
+                // joueur sait que quelque chose se calcule, suspense léger.
                 Text("?")
                     .font(.system(size: 18, weight: .regular, design: .serif))
                     .foregroundColor(tint.opacity(0.35))

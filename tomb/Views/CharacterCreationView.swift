@@ -94,7 +94,7 @@ struct CharacterCreationView: View {
         case .stamina:
             rollPhaseCard(
                 label: "Endurance",
-                icon: "heart.fill",
+                icon: "life",
                 color: Theme.blood,
                 baseBonus: 12,
                 diceCount: 2,
@@ -104,7 +104,7 @@ struct CharacterCreationView: View {
         case .skill:
             rollPhaseCard(
                 label: "Habileté",
-                icon: "burst.fill",
+                icon: "ability",
                 color: Theme.inkBlue,
                 baseBonus: 6,
                 diceCount: 1,
@@ -114,7 +114,7 @@ struct CharacterCreationView: View {
         case .luck:
             rollPhaseCard(
                 label: "Chance",
-                icon: "sparkles",
+                icon: "luck",
                 color: Theme.verdigris,
                 baseBonus: 6,
                 diceCount: 1,
@@ -195,7 +195,7 @@ struct CharacterCreationView: View {
             difficultyBanner
             if let roll = session.characterRoll {
                 statLine(label: "Endurance",
-                         icon: "heart.fill",
+                         icon: "life",
                          color: Theme.blood,
                          diceValues: [roll.staminaDice.0, roll.staminaDice.1],
                          baseBonus: 12,
@@ -204,7 +204,7 @@ struct CharacterCreationView: View {
                          key: "stamina-recap")
                 divider
                 statLine(label: "Habileté",
-                         icon: "burst.fill",
+                         icon: "ability",
                          color: Theme.inkBlue,
                          diceValues: [roll.skillDie],
                          baseBonus: 6,
@@ -213,7 +213,7 @@ struct CharacterCreationView: View {
                          key: "skill-recap")
                 divider
                 statLine(label: "Chance",
-                         icon: "sparkles",
+                         icon: "luck",
                          color: Theme.verdigris,
                          diceValues: [roll.luckDie],
                          baseBonus: 6,
@@ -350,20 +350,13 @@ struct CharacterCreationView: View {
     // MARK: - Actions
 
     private var actions: some View {
-        VStack(spacing: 10) {
-            primaryButton
-            Button {
-                session.cancelCharacterCreation()
-            } label: {
-                Text("Retour au menu")
-                    .font(Theme.display(12))
-                    .foregroundColor(Theme.inkFaded)
-                    .padding(.vertical, 8)
-                    .frame(maxWidth: .infinity)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-        }
+        // Le lien "Retour au menu" a été retiré : il ne servait pas à
+        // grand-chose en cours de création (les jets ne sont pas encore
+        // commités tant qu'on n'a pas validé la difficulté) et il
+        // encombrait visuellement la page. `cancelCharacterCreation()`
+        // reste disponible côté session pour les flows internes — juste
+        // pas exposé via un bouton ici.
+        primaryButton
     }
 
     @ViewBuilder
