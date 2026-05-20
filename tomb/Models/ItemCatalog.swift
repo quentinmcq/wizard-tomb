@@ -133,7 +133,7 @@ enum ItemCatalog {
         "forgotten_grimoire": Info(
             name: "Grimoire des oubliés",
             description: "Un livre relié de cuir bordeaux ramassé dans une crypte. Quand tu l'ouvres, tu sens des idées plus rapides — sans pouvoir dire si c'est l'effet du livre ou ton propre soulagement d'être sorti vivant.",
-            icon: "book.closed.fill",
+            icon: "spellbook",
             effect: "Lore — compagnon de quête"
         ),
         "widow_token": Info(

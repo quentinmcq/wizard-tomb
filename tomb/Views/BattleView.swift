@@ -897,7 +897,7 @@ struct BattleLog: View {
         case .hitTaken: return "heal_down"   // pixel-art : on encaisse
         case .miss:     return "tie"         // pixel-art : égalité / parade
         case .lucky:    return "sparkles"
-        case .unlucky:  return "exclamationmark.triangle.fill"
+        case .unlucky:  return "trap"        // pixel-art : tour défavorable de la Chance
         case .end:      return "dead"        // pixel-art : monstre abattu (ou défaite côté joueur)
         }
     }

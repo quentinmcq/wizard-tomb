@@ -523,7 +523,7 @@ struct MarginNote: View {
         case .damage:  return "heal_down"    // pixel-art : on perd de la vie
         case .loss:    return "minus.circle.fill"
         case .lucky:   return "star.fill"
-        case .unlucky: return "exclamationmark.triangle.fill"
+        case .unlucky: return "trap"         // pixel-art : piège / mauvaise pioche au jet de Chance
         case .info:    return "circle.fill"
         }
     }
@@ -1741,13 +1741,13 @@ struct InventoryRow: View {
                         }
                         if let onEquip {
                             actionButton(label: "Équiper",
-                                         icon: "wear",
+                                         icon: "equip",
                                          tint: Theme.inkBlue,
                                          action: onEquip)
                         }
                         if let onUnequip {
                             actionButton(label: "Déséquiper",
-                                         icon: "hand.raised.slash.fill",
+                                         icon: "unequip",
                                          tint: Theme.inkFaded,
                                          action: onUnequip)
                         }
