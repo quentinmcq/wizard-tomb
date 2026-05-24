@@ -60,6 +60,10 @@ struct BattleState {
     /// puis consommée. Pendant pour les items qui affaiblissent (eau
     /// bénite, huile noire…).
     var enemySkillPenalty: Int = 0
+    /// Nombre de rounds résolus dans ce combat (incrémenté à chaque appel
+    /// à `BattleEngine.attack`). Sert au succès « Hécatombe » (3 combats
+    /// finis en <6 rounds) et à des stats potentielles.
+    var roundCount: Int = 0
 
     init(setup: BattleSetup) {
         self.enemy = setup.enemy
@@ -206,6 +210,7 @@ enum BattleEngine {
                        player: inout PlayerState,
                        playerRoll: Int? = nil,
                        enemyRoll: Int? = nil) {
+        state.roundCount += 1
         let pSum = playerRoll ?? roll2d6()
         let eSum = enemyRoll ?? roll2d6()
         // Modificateurs à usage unique posés par les items combat

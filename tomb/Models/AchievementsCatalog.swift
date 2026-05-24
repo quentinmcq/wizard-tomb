@@ -37,6 +37,12 @@ enum AchievementsCatalog {
         static let widowsPromise    = "ach.widows_promise" // chaîne rendue
         static let mortimerSeesYou  = "ach.mortimer_eyes"  // voice_defy + victoire
         static let perfectRun       = "ach.perfect_run"    // Endurance >= 90% à la fin honor
+        // Tiers intermédiaires et nouveaux défis
+        static let threeEndings     = "ach.three_endings"  // 3 fins découvertes (vs 5 cartographer)
+        static let bestiaryHalf     = "ach.bestiary_half"  // 10 ennemis répertoriés
+        static let speedrunner      = "ach.speedrunner"    // fin atteinte en <20 min
+        static let tombeauRevisited = "ach.tombeau_revisited" // 3 runs complets cumulés
+        static let hecatomb         = "ach.hecatomb"       // 3 combats en moins de 6 rounds chacun (même run)
     }
 
     static let all: [Achievement] = [
@@ -50,9 +56,9 @@ enum AchievementsCatalog {
         Achievement(
             id: ID.pacifist,
             title: "L'ombre qui passe",
-            description: "Tu as remis l'amulette à Aldwin sans avoir abattu un seul monstre. Le tombeau ne saura jamais que tu es passé.",
+            description: "Tu as remis l'amulette à Aldwin en n'affrontant que Mortimer lui-même. Tout le reste — gobelin, loups, serpents, gardiens — tu l'as contourné.",
             icon: "leaf.fill",
-            hint: "Certains terminent l'aventure sans avoir frappé personne."
+            hint: "Le tombeau a des chemins que les armes ne demandent pas."
         ),
         Achievement(
             id: ID.ironMan,
@@ -65,7 +71,7 @@ enum AchievementsCatalog {
             id: ID.collector,
             title: "Brocanteur méthodique",
             description: "Tu as ramassé au moins dix objets différents au cours d'une partie. Tu as les poches qui tintent.",
-            icon: "bag.fill",
+            icon: "gold_pouch",
             hint: "Tu pourrais tenir un comptoir avec ce que tu trouves."
         ),
         Achievement(
@@ -114,7 +120,7 @@ enum AchievementsCatalog {
             id: ID.cursedAndProud,
             title: "Lame noire au flanc",
             description: "Tu as porté la lame trempée chez la sorcière jusqu'au bout. Quelque chose en toi s'est éteint en chemin, mais tu as su l'utiliser.",
-            icon: "bolt.fill",
+            icon: "hardened_blade",
             hint: "L'arme qui demande un prix."
         ),
         Achievement(
@@ -128,7 +134,7 @@ enum AchievementsCatalog {
             id: ID.mortimerSeesYou,
             title: "Reconnu par le spectre",
             description: "Tu as répondu à voix haute à la chambre des voix, et tu as fini par vaincre Mortimer. Il sait maintenant qui tu es.",
-            icon: "eye.trianglebadge.exclamationmark.fill",
+            icon: "eye",
             hint: "Une chambre cache une voix qui te ressemble."
         ),
         Achievement(
@@ -137,6 +143,42 @@ enum AchievementsCatalog {
             description: "Tu as scellé Mortimer en élevant l'amulette au ciel. Tu deviens, pour ce qui suivra, le sorcier-protecteur de la vallée.",
             icon: "sparkles",
             hint: "Trois forces alignées dans une main droite."
+        ),
+        // ----- Tiers intermédiaires & nouveaux défis -----
+        Achievement(
+            id: ID.threeEndings,
+            title: "Trois chemins",
+            description: "Tu as atteint trois fins différentes. Le tombeau a plusieurs voix, et tu commences à les distinguer.",
+            icon: "book.closed.fill",
+            hint: "Toutes les routes ne mènent pas au même village."
+        ),
+        Achievement(
+            id: ID.bestiaryHalf,
+            title: "Demi-bestiaire",
+            description: "Tu as inscrit dix créatures dans ton carnet. La moitié des secrets du tombeau et de la forêt, déjà.",
+            icon: "bestiary",
+            hint: "Dix monstres, dix entrées dans le grand livre."
+        ),
+        Achievement(
+            id: ID.speedrunner,
+            title: "Le pas pressé",
+            description: "Tu as fini l'aventure en moins de vingt minutes. Aldwin n'a même pas eu le temps de s'inquiéter.",
+            icon: "hourglass",
+            hint: "Le temps n'attend pas, mais toi non plus."
+        ),
+        Achievement(
+            id: ID.tombeauRevisited,
+            title: "Tombeau revisité",
+            description: "Tu as fini l'aventure trois fois. Le sentier ne te surprend plus — c'est toi qui le surprends.",
+            icon: "arrow.triangle.2.circlepath",
+            hint: "Certains finissent l'aventure. D'autres y reviennent."
+        ),
+        Achievement(
+            id: ID.hecatomb,
+            title: "Hécatombe",
+            description: "Trois combats remportés en moins de six rounds, en une seule aventure. Ta lame n'attend personne.",
+            icon: "bolt.fill",
+            hint: "Frapper vite, frapper juste, frapper trois fois."
         )
     ]
 

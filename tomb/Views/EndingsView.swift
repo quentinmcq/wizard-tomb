@@ -81,9 +81,8 @@ private struct EndingRow: View {
         HStack(alignment: .top, spacing: 14) {
             Group {
                 if isDiscovered {
-                    Image(systemName: "checkmark.seal.fill")
-                        .font(.system(size: 18))
-                        .foregroundColor(Theme.oldGold)
+                    // Issue trouvée → asset pixel-art `adventure_find`.
+                    Theme.icon("adventure_find", size: 18, color: Theme.oldGold)
                 } else {
                     // Placeholder pixel-art pour les fins non découvertes.
                     Theme.icon("question_mark", size: 18,

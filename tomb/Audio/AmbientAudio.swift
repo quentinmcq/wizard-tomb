@@ -9,7 +9,13 @@
 //  manipule les assets.
 //
 
-import AVFoundation
+// AVFoundation n'est pas encore audité pour Sendable côté Swift 6.
+// `@preconcurrency` silence les warnings « Add '@preconcurrency' to
+// suppress 'Sendable'-related warnings from module 'AVFAudio' » qui
+// remontaient sur la capture d'`ambientPlayer` / `battlePlayer` dans
+// les `Task { @MainActor in ... }` du crossfade. À retirer le jour où
+// Apple annote ces types Sendable.
+@preconcurrency import AVFoundation
 import Combine
 import SwiftUI
 
@@ -171,8 +177,9 @@ final class AmbientAudio: ObservableObject {
             ambientPlayer.scheduleBuffer(buffer, at: nil, options: [.loops])
             ambientPlayer.play()
             // Volume cible direct (pas de fade-in à l'allumage du jeu) ;
-            // multiplié par la préférence utilisateur (slider 0..1).
-            ambientPlayer.volume = ambientTargetVolume * ambientVolume
+            // multiplié par la préférence utilisateur (slider 0..1) et
+            // par le bias du chapitre courant (set par GameSession).
+            ambientPlayer.volume = ambientTargetVolume * chapterBias * ambientVolume
             battlePlayer.volume = 0
             isPlaying = true
             isInBattle = false
@@ -188,7 +195,39 @@ final class AmbientAudio: ObservableObject {
         if isInBattle {
             battlePlayer.volume = currentBattleVolume * ambientVolume
         } else if isPlaying {
-            ambientPlayer.volume = ambientTargetVolume * ambientVolume
+            ambientPlayer.volume = ambientTargetVolume * chapterBias * ambientVolume
+        }
+    }
+
+    /// Multiplicateur volumique appliqué au drone d'exploration selon le
+    /// chapitre courant. Permet de varier l'atmosphère sonore sans
+    /// remplacer le loop : le village est aéré (faible volume), le
+    /// tombeau est oppressant (volume max), le retour est apaisé. Pour un
+    /// loop pitch-shifté il faudrait insérer un `AVAudioUnitTimePitch`
+    /// entre le player et le mixer — over-engineering pour le bénéfice.
+    private var chapterBias: Float = 1.0
+
+    /// Appelé par GameSession quand `currentChapter` change. Adoucit ou
+    /// renforce le drone d'ambiance pour évoquer le lieu, avec un ramp
+    /// court pour ne pas claquer la transition.
+    func setChapterAmbience(_ chapter: Chapter) {
+        let newBias: Float
+        switch chapter {
+        case .village:    newBias = 0.55   // air ouvert, marché, calme
+        case .forest:     newBias = 0.85
+        case .marsh:      newBias = 1.05   // glauque, lourd
+        case .ruins:      newBias = 0.95
+        case .tomb:       newBias = 1.20   // oppressant
+        case .chamber:    newBias = 1.10
+        case .homecoming: newBias = 0.60   // soulagement, lumière
+        case .ending:     newBias = 0.50
+        }
+        guard abs(newBias - chapterBias) > 0.001 else { return }
+        chapterBias = newBias
+        guard isPlaying, !isInBattle else { return }
+        let target = ambientTargetVolume * chapterBias * ambientVolume
+        Task { @MainActor in
+            await Self.rampVolume(ambientPlayer, to: target, over: 1.2)
         }
     }
 

@@ -12,8 +12,6 @@ struct SettingsView: View {
     @ObservedObject var audio: AmbientAudio
     @Environment(\.dismiss) private var dismiss
 
-    @State private var confirmDeleteSave = false
-
     var body: some View {
         NavigationStack {
             ZStack {
@@ -21,7 +19,6 @@ struct SettingsView: View {
                 ScrollView {
                     VStack(spacing: 22) {
                         audioSection
-                        saveSection
                         aboutSection
                         creditsSection
                     }
@@ -36,18 +33,6 @@ struct SettingsView: View {
                         .foregroundColor(Theme.ink)
                 }
             }
-            .confirmationDialog(
-                "Effacer la sauvegarde ?",
-                isPresented: $confirmDeleteSave,
-                titleVisibility: .visible
-            ) {
-                Button("Effacer la partie en cours", role: .destructive) {
-                    session.deleteSave()
-                }
-                Button("Annuler", role: .cancel) { }
-            } message: {
-                Text("Tu repartiras à zéro la prochaine fois que tu lanceras le jeu. Cette action ne peut pas être annulée.")
-            }
         }
     }
 
@@ -55,67 +40,34 @@ struct SettingsView: View {
 
     private var audioSection: some View {
         SettingsSection(title: "Audio") {
-            SettingsToggleRow(
+            // Une seule rangée par catégorie : icône + label + toggle
+            // sur la ligne du haut, slider de volume juste en dessous
+            // (grisé et inactif quand le toggle est off). Plus compact
+            // que l'ancien layout 4 rangées + 2 icônes redondantes.
+            SettingsAudioRow(
                 icon: "sound",
                 iconTint: Theme.inkBlue,
                 label: "Ambiance sonore",
                 hint: "Musique d'ambiance pendant l'aventure.",
-                isOn: $audio.ambientEnabled
+                isOn: $audio.ambientEnabled,
+                volume: $audio.ambientVolume
             )
-            if audio.ambientEnabled {
-                SettingsVolumeRow(label: "Volume ambiance",
-                                  value: $audio.ambientVolume,
-                                  tint: Theme.inkBlue)
-            }
             SettingsDivider()
-            SettingsToggleRow(
-                icon: "dice.fill",
+            SettingsAudioRow(
+                icon: "sound_effect",
                 iconTint: Theme.verdigris,
                 label: "Effets sonores",
                 hint: "Dés, coups, jets de dés, etc.",
-                isOn: $audio.effectsEnabled
+                isOn: $audio.effectsEnabled,
+                volume: $audio.effectsVolume
             )
-            if audio.effectsEnabled {
-                SettingsVolumeRow(label: "Volume effets",
-                                  value: $audio.effectsVolume,
-                                  tint: Theme.verdigris)
-            }
         }
     }
 
-    // MARK: - Sauvegarde
-
-    private var saveSection: some View {
-        SettingsSection(title: "Sauvegarde") {
-            Button {
-                confirmDeleteSave = true
-            } label: {
-                HStack(spacing: 12) {
-                    Image(systemName: "trash.fill")
-                        .foregroundColor(session.hasSavedGame ? Theme.blood : Theme.inkFaded.opacity(0.6))
-                        .font(.system(size: 14))
-                        .frame(width: 22)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Effacer la partie en cours")
-                            .font(Theme.display(13))
-                            .foregroundColor(session.hasSavedGame ? Theme.blood : Theme.inkFaded.opacity(0.6))
-                        if !session.hasSavedGame {
-                            Text("Aucune sauvegarde à effacer.")
-                                .font(Theme.body(12))
-                                .italic()
-                                .foregroundColor(Theme.inkFaded.opacity(0.7))
-                        }
-                    }
-                    Spacer(minLength: 0)
-                }
-                .padding(.vertical, 12)
-                .padding(.horizontal, 14)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .disabled(!session.hasSavedGame)
-        }
-    }
+    // La section « Sauvegarde » a été retirée — elle faisait doublon avec
+    // le bouton « Nouvelle partie » du menu principal (qui écrase la save
+    // en repartant à zéro). Pour effacer manuellement, on passe par
+    // « Nouvelle partie » → création de personnage → confirmation.
 
     // MARK: - À propos
 
@@ -152,6 +104,8 @@ struct SettingsView: View {
                            value: "« 80 CC0 RPG SFX » (CC0, OpenGameArt)")
                 creditLine(label: "Portraits de monstres",
                            value: "Illustrations issues de la série Fighting Fantasy (Steve Jackson & Ian Livingstone, Puffin / Penguin Books) et de leurs illustrateurs — Russ Nicholson, Iain McCaig, Alan Langford et al. Usage hommage non commercial.")
+                creditLine(label: "Icônes pixel-art",
+                           value: "Caio Carlos of the Clockwork Raven — Additional Art Assets (License User-side, usage commercial autorisé sans crédit obligatoire).")
                 creditLine(label: "Polices",
                            value: "IM Fell English & Cinzel (Open Font License)")
                 creditLine(label: "Moteur narratif",
@@ -214,66 +168,62 @@ private struct SettingsDivider: View {
     }
 }
 
-private struct SettingsToggleRow: View {
+/// Rangée audio combinée : toggle inline + slider de volume juste en
+/// dessous. Quand le toggle est off, le slider est grisé et désactivé —
+/// signale visuellement la relation parent/enfant entre les deux
+/// contrôles sans gaspiller une rangée séparée.
+private struct SettingsAudioRow: View {
     let icon: String
     let iconTint: Color
     let label: String
     let hint: String
     @Binding var isOn: Bool
+    @Binding var volume: Float
 
     var body: some View {
-        HStack(spacing: 12) {
-            // Theme.icon route automatiquement vers les PNG du bundle
-            // (sound, ...) ou retombe sur SF Symbol — permet aux call
-            // sites de mélanger les deux conventions sans changer le type.
-            Theme.icon(icon, size: 14, color: iconTint)
-                .frame(width: 22)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(label)
-                    .font(Theme.display(13))
-                    .foregroundColor(Theme.ink)
-                Text(hint)
-                    .font(Theme.body(12))
-                    .italic()
-                    .foregroundColor(Theme.inkFaded)
-                    .lineSpacing(2)
-                    .fixedSize(horizontal: false, vertical: true)
+        VStack(spacing: 8) {
+            // Ligne 1 : icône + label/hint + toggle
+            HStack(spacing: 12) {
+                Theme.icon(icon, size: 14, color: iconTint)
+                    .frame(width: 22)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(label)
+                        .font(Theme.display(13))
+                        .foregroundColor(Theme.ink)
+                    Text(hint)
+                        .font(Theme.body(12))
+                        .italic()
+                        .foregroundColor(Theme.inkFaded)
+                        .lineSpacing(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 8)
+                Toggle("", isOn: $isOn)
+                    .labelsHidden()
+                    .tint(Theme.blood)
             }
-            Spacer(minLength: 8)
-            Toggle("", isOn: $isOn)
-                .labelsHidden()
-                .tint(Theme.blood)
+
+            // Ligne 2 : slider de volume, indenté pour rester visuellement
+            // sous le label. Grisé/désactivé quand le toggle est off.
+            HStack(spacing: 12) {
+                Color.clear.frame(width: 22, height: 1)  // align avec l'icône au-dessus
+                Slider(value: $volume, in: 0...1)
+                    .tint(iconTint)
+                    .disabled(!isOn)
+                    .opacity(isOn ? 1.0 : 0.4)
+                Text("\(Int(volume * 100)) %")
+                    .font(.system(size: 11, weight: .semibold, design: .serif))
+                    .foregroundColor(isOn ? Theme.ink : Theme.inkFaded.opacity(0.5))
+                    .monospacedDigit()
+                    .frame(width: 42, alignment: .trailing)
+            }
         }
         .padding(.vertical, 10)
         .padding(.horizontal, 14)
     }
 }
 
-/// Ligne curseur de volume, affichée sous chaque toggle audio quand celui-ci
-/// est activé. Valeur 0..1 — affichée en pourcentage à droite pour donner
-/// un repère chiffré au joueur.
-private struct SettingsVolumeRow: View {
-    let label: String
-    @Binding var value: Float
-    let tint: Color
-
-    var body: some View {
-        HStack(spacing: 12) {
-            Theme.icon("sound", size: 10, color: tint.opacity(0.7))
-                .frame(width: 22)
-            Text(label)
-                .font(Theme.display(11))
-                .foregroundColor(Theme.inkFaded)
-            Slider(value: $value, in: 0...1)
-                .tint(tint)
-            Text("\(Int(value * 100)) %")
-                .font(.system(size: 11, weight: .semibold, design: .serif))
-                .foregroundColor(Theme.ink)
-                .monospacedDigit()
-                .frame(width: 42, alignment: .trailing)
-        }
-        .padding(.vertical, 4)
-        .padding(.horizontal, 14)
-        .padding(.bottom, 6)
-    }
-}
+// `SettingsToggleRow` et `SettingsVolumeRow` ont été remplacés par
+// `SettingsAudioRow` (cf. plus haut), qui combine toggle + slider en une
+// seule rangée pour aérer la section Audio. Conservés ailleurs si jamais
+// on les ressort, sinon Git les retrouvera dans l'historique.

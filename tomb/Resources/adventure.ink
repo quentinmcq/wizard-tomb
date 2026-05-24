@@ -66,6 +66,13 @@ VAR has_lycan_pendant      = 0
 VAR has_pit_signet         = 0
 VAR has_silver_seal_ring   = 0
 VAR has_mortimer_attention = 0
+// Rumeurs / indices narratifs
+VAR has_carrefour_blade_rumour = 0
+VAR has_seuils_word        = 0
+// Malédictions silencieuses
+VAR has_beggar_curse       = 0
+// Compteurs d'easter egg
+VAR temple_inscription_reads = 0
 
 // Synchronisée depuis Swift au début de chaque advance() et après chaque
 // spend_gold. Permet aux choix payants de se conditionner sur le solde.
@@ -146,14 +153,21 @@ Elle te tend un petit médaillon de fer noirci, plus proche d’une promesse que
 * [La saluer et retourner sur la place] -> village_square
 
 === inn ===
-L'auberge sent la bière tiède, la sueur, et le bois humide. Trois bûcherons jouent aux dés près de l'âtre, indifférents à ton entrée. Mais un homme barbu, seul dans le coin le plus sombre, te suit du regard.
+L'auberge sent la bière tiède, la sueur, et le bois humide. Trois bûcherons jouent aux dés près de l'âtre, indifférents à ton entrée. Une aubergiste à l'air las essuie machinalement un pichet derrière le comptoir. Un homme barbu, seul dans le coin le plus sombre, te suit du regard.
 
-Il fait tourner un verre vide entre ses doigts.
+* {not inn_rumour} [Aborder l'homme barbu]            -> inn_man_intro
+* {not inn_drink}  [Commander une chope ($1)]         -> inn_drink
+* {not inn_dice}   [Te joindre aux bûcherons aux dés ($1)] -> inn_dice
+* {not inn_listen} [Écouter sans te faire remarquer]  -> inn_listen
+* [Sortir de l'auberge]                                -> village_alleys
+
+=== inn_man_intro ===
+Tu t'approches. L'homme fait tourner un verre vide entre ses doigts.
 
 « Tu pars pour le tombeau, on dirait. Personne ne va plus là-bas — sauf les fous. Si tu paies ma prochaine tournée, je te dis ce que je sais. »
 
-* [Lui payer 2 pièces d'or ($2)]           -> inn_rumour
-* [Refuser et sortir]                 -> village_alleys
+* [Lui payer 2 pièces d'or ($2)]      -> inn_rumour
+* [Refuser et revenir au comptoir]    -> inn
 
 === inn_rumour ===
 L'homme avale d'un trait sa nouvelle chope, essuie ses moustaches du revers du poignet, et se penche au-dessus de la table comme s'il craignait qu'un fantôme l'écoute.
@@ -167,7 +181,49 @@ Il essuie du doigt une dernière goutte de bière accrochée à sa moustache.
 # spend_gold: 2
 # add_item: rumour_mortimer
 
-* [Sortir de l'auberge] -> village_alleys
+* [Revenir au comptoir] -> inn
+
+=== inn_drink ===
+L'aubergiste te sert une chope d'une bière brune qui sent la noisette. Tu la bois en trois gorgées. La chaleur descend, vaste et lente, comme une couverture jetée sur tes épaules.
+
+# spend_gold: 1
+# heal: 2
+
+* [Reposer la chope] -> inn
+
+=== inn_dice ===
+Les bûcherons te font signe d'approcher. Le plus grand fait rouler trois dés de bois usés dans sa paume calleuse.
+
+« Une pièce mise. Tu fais mieux que nous trois — tu prends quatre. Tu fais pire — tu perds. »
+
+* [Lancer les dés] -> inn_dice_resolve
+
+=== inn_dice_resolve ===
+~ temp roll = RANDOM(1, 6) + RANDOM(1, 6)
+{roll >= 8:
+    Le bûcheron grogne en repoussant trois pièces vers toi. « La chance suit ceux qui partent. »
+    # gain_gold: 3
+- else:
+    Les dés tombent contre toi. Le bûcheron empoche ta pièce sans un mot et reprend sa partie.
+    # spend_gold: 1
+}
+
+* [Revenir au comptoir] -> inn
+
+=== inn_listen ===
+Tu prends place près d'une colonne, le dos contre le bois sombre, et tends l'oreille. Les bûcherons parlent à voix haute, sans se soucier de qui les écoute.
+
+« — … dans les ronces près du carrefour, te dis-je. Une lame, plantée droite dans le tronc. Personne n'a osé la déloger. »
+
+« — Et tu crois qu'elle vaut le détour ? »
+
+« — Pour ce que j'en sais, oui. Mais le carrefour, c'est plus tout à fait à nous. »
+
+Tu retiens le mot.
+
+# add_item: carrefour_blade_rumour
+
+* [Revenir au comptoir] -> inn
 
 === beggar ===
 Près du puits, un vieux mendiant est assis sur un sac de toile. Ses yeux sont d'un gris si clair qu'on dirait deux pièces d'argent dans un visage tanné par les années. Quand il te voit, il sourit.
@@ -175,7 +231,7 @@ Près du puits, un vieux mendiant est assis sur un sac de toile. Ses yeux sont d
 « Une pièce, brave voyageur, et je murmurerai ton nom aux esprits de la Chance. Ils écoutent encore les vieux mendiants, parfois. »
 
 * [Lui donner une pièce d'or ($1)]    -> beggar_offering
-* [Refuser et passer ton chemin] -> village_square
+* [Refuser et passer ton chemin]      -> beggar_refused
 
 === beggar_offering ===
 Tu déposes une pièce d'or dans sa paume calleuse. Il referme ses doigts dessus et ferme les yeux. Il murmure quelque chose dans une langue que tu ne connais pas, et une douce chaleur t'envahit la nuque, comme un soleil oublié depuis longtemps.
@@ -190,6 +246,16 @@ Le vieil homme rouvre les yeux : ils sont, l'espace d'un instant, complètement 
 
 * [Continuer ton tour de la place] -> village_square
 
+=== beggar_refused ===
+Tu détournes le regard et continues ta route. Dans ton dos, le vieil homme se tait. Pas un soupir, pas un mot. Quand tu jettes un coup d'œil par-dessus l'épaule, il n'a pas bougé — mais il sourit toujours, et ses yeux ne sont plus tout à fait gris. Ils sont blancs. Entièrement blancs.
+
+Une fraîcheur étrange te traverse la nuque, comme si quelqu'un venait de souffler ton nom.
+
+~ has_beggar_curse = 1
+# luck_bonus: -1
+
+* [Poursuivre ton chemin] -> village_square
+
 // ---------- 1bis. Roncebrune élargi ----------
 
 === temple_priest ===
@@ -197,11 +263,26 @@ Le temple n'est plus qu'une nef étroite, dépourvue de cloche et de fidèles. P
 
 « Tu pars là-bas. Bien. Approche, mon fils. La protection que je peux t'offrir est maigre, mais elle a un prix — pas pour moi, pour le tronc. Sans cela, le temple n’aurait plus de toit cet hiver. »
 
-Il désigne du menton la fente de bois où l'on jette les pièces.
+Il désigne du menton la fente de bois où l'on jette les pièces. Au-dessus de l'autel, sur la pierre noircie de fumée, tu aperçois une inscription à moitié effacée.
 
 * [Déposer deux pièces dans le tronc et recevoir la bénédiction ($2)] -> temple_blessing
 * [Lui demander s'il a connu Mortimer] -> temple_mortimer
+* {temple_inscription_reads < 3} [T'approcher pour relire l'inscription au-dessus de l'autel] -> temple_inscription
 * [Sortir sans rien laisser] -> temple_leave
+
+=== temple_inscription ===
+~ temple_inscription_reads = temple_inscription_reads + 1
+{temple_inscription_reads:
+- 1:
+    Tu te penches sur la pierre. Les lettres sont gothiques, érodées, mais lisibles si on prend le temps : « Que le seuil reconnaisse celui qui s'arrête trois fois. » Tu hausses les épaules.
+- 2:
+    Tu reviens. Tu relis. La phrase ne dit pas exactement ce que tu croyais : « Que le seuil reconnaisse celui qui s'arrête trois fois — et nomme ce qu'il a perdu. » Étrange. Tu te demandes ce que tu as perdu, exactement.
+- 3:
+    Tu reviens encore. Le père Cassien suit ton manège du coin de l'œil mais ne dit rien. Cette fois, sur la dernière ligne, tu distingues un mot que tu n'avais pas vu — un mot gravé plus profond, comme par une autre main. Tu en sens la forme avant d'en lire le sens. C'est un nom. Pas le tien. Pas celui d'un saint que tu connais. Quand tu le prononces silencieusement, l'autel craque, et le père Cassien dépose un objet dans ta paume sans te regarder.
+    # add_item: seuils_word
+}
+
+* [Retourner sur la place] -> village_square
 
 === temple_blessing ===
 Tu fais glisser deux pièces dans la fente. Le père Cassien hoche la tête, pose ses mains sur ton front. Le bois de l'autel craque doucement. Tu sens une douceur grave traverser tes épaules — non pas un feu, pas une chaleur, mais un poids qu'on retire. Tu te tiens plus droit en sortant.
@@ -460,7 +541,40 @@ Au nord, des pierres dressées trouent les fougères en un tracé brisé — un 
 * {not forest_wolves} [Suivre l'alignement de pierres au nord] -> forest_wolves
 * {not forest_merchant} [Aller voir le campement à l'est] -> forest_merchant
 * {not forest_cabin} [Pousser jusqu'à la cabane à l'ouest] -> forest_cabin
+* {not lynx_path} [Examiner un sentier presque effacé sous les fougères] -> lynx_path
 * [Reprendre la piste vers le carrefour] -> crossroads
+
+=== lynx_path ===
+Tu écartes les fougères et tu suis le sentier. Il monte légèrement, en lacets serrés. Au creux d'un coude, sur un rocher couvert de mousse, un grand félin gris-cendre te regarde sans bouger. Plus large qu'un loup. Une oreille déchirée. Les yeux d'or, calmes.
+
+Il bloque le passage. Il ne grogne pas. Il attend.
+
+* [Avancer lentement la main vers lui]
+    Tu fais un pas. Le lynx baisse la tête, doucement, comme un chat qui jauge. Il te laisse passer. Tu sens, en croisant son regard, que tu viens d'être choisi pour une raison que tu ne sauras peut-être jamais.
+    # luck_bonus: 1
+    -> lynx_path_passed
+* [Tirer l'épée]
+    -> fight_lynx
+* [Reculer et reprendre la clairière]
+    -> forest_clearing
+
+=== fight_lynx ===
+# combat: forest_lynx
+# flee_to: forest_clearing
+# victory_path: lynx_defeated
+-> END
+
+=== lynx_defeated ===
+Le lynx tombe sans un cri. Tu poses la main sur sa fourrure tiède un instant. Quelque chose de très ancien te regarde encore, derrière ses yeux qui s'éteignent. Tu ne sauras pas si c'était une bête, ou une garde, ou les deux.
+
+* [Continuer le sentier] -> lynx_path_passed
+
+=== lynx_path_passed ===
+Le sentier débouche sur une trouée d'herbe rase, ourlée de cailloux blanchis. Au centre, à demi enfouie sous la mousse, repose une dague d'os finement gravée. Tu la dégages d'un geste, surpris par sa légèreté.
+
+# add_item: assassin_dagger
+
+* [Redescendre vers la clairière] -> forest_clearing
 
 === forest_wolves ===
 Les pierres dressées forment un cercle imparfait. Une herbe rase et sèche les entoure, comme si rien n'avait poussé là depuis longtemps. Tu n'as pas le temps d'en faire le tour qu'un grognement bas, à hauteur de poitrine, te fige sur place.
@@ -781,7 +895,46 @@ L'odeur change avant la végétation. Sulfure, vase, quelque chose de plus ancie
 
 Tu vois apparaître entre les troncs la première mare stagnante — noire, immobile, parfaitement lisse comme un miroir qui aurait oublié comment refléter.
 
-* [Avancer dans le marais] -> marsh
+* [Poursuivre] -> marsh_silence
+
+=== marsh_silence ===
+Tu poses un pied, puis l'autre, et tu t'arrêtes.
+
+Le marais est silencieux. Pas un oiseau. Pas un insecte. Pas même le souffle du vent dans les roseaux secs. Seule ta respiration, devenue soudain trop forte, te répond.
+
+Tu remarques alors les petites pierres. Une, plantée droite dans la vase, à hauteur de tes genoux. Une autre, dix pas plus loin, à demi avalée par la boue. Une troisième, plus penchée encore. On dirait qu'elles te montrent un chemin — ou qu'elles marquent un emplacement où d'autres, avant toi, se sont arrêtés. Peut-être tous au même endroit. Peut-être tous au même instant.
+
+Quelque chose, au fond de l'eau noire, bouge. Sans rides. Sans son.
+
+* [Continuer ta marche]                                            -> marsh
+* [Suivre les pierres jusqu'à leur dernier emplacement]            -> marsh_wraith_lair
+
+=== marsh_wraith_lair ===
+Tu suis les petites pierres une par une. La septième est plantée au bord d'une mare plus large que les autres, presque ronde, parfaitement immobile. Quelque chose remonte lentement à la surface — une forme blanchâtre qui ne touche pas la vase et ne projette pas d'ombre. Elle prend doucement la silhouette de plusieurs personnes superposées, comme si plusieurs corps essayaient de tenir dans un seul. Elle ne te regarde pas. Mais elle t'attend.
+
+* [Reculer doucement sans rompre le silence]
+    Tu t'éloignes pas après pas, sans tourner le dos. La forme blanchâtre te suit du « regard » sans bouger, puis replonge dans la vase. Tu mets longtemps avant de pouvoir respirer normalement à nouveau.
+    -> marsh
+* [Lui prononcer ton nom à voix haute]
+    Tu dis ton nom. Lentement. La forme tressaille — puis se dissout, comme si elle attendait depuis longtemps qu'on lui prête une attention véritable. Une fleur blanche, séchée, est posée à tes pieds quand tu rouvres les yeux.
+    # add_item: forest_herbs
+    # luck_bonus: 1
+    -> marsh
+* [Tirer l'épée]
+    -> fight_wraith
+
+=== fight_wraith ===
+# combat: marsh_wraith
+# flee_to: marsh
+# victory_path: wraith_defeated
+-> END
+
+=== wraith_defeated ===
+Tu portes le dernier coup et la forme blanchâtre se disperse en un nuage de gouttes glacées qui retombent en pluie sur tes épaules. Sur la pierre voisine, un petit os gravé d'un nom illisible attendait peut-être ce moment. Tu le glisses dans ta sacoche.
+
+# add_item: forgotten_grimoire
+
+* [Reprendre ta marche] -> marsh
 
 === marsh ===
 Tes bottes s'enfoncent dans une boue noire qui aspire et claque à chaque pas. L'air pue le soufre et la matière en décomposition. Des bulles crèvent à la surface des mares stagnantes, sans qu'aucune vie n'y soit visible.
@@ -1375,7 +1528,6 @@ Au fond du vestibule, une arche, et au-delà : une lumière grise qui pulse lent
 === vestibule_pause ===
 Tu t'assois quelques minutes contre la pierre froide. Tu fermes les yeux, tu écoutes le rythme étrange de la lumière au fond. Tu te rappelles le visage du père Cassien, la voix d'Aldwin, le sourire trop sérieux de l'enfant qui te connaissait sans te connaître. Tu te lèves différent — pas plus fort, mais plus net.
 
-# luck_restore
 # heal: 2
 
 * [Franchir l'arche] -> final_chamber
@@ -1403,6 +1555,20 @@ La chaleur cuivrée dans tes veines fait reculer le froid spectral d'un pas. Mor
 
 * [L'affronter en duel]                      -> fight_sorcerer_phase1
 * [Tenter de saisir l'amulette et fuir]      -> flee_attempt
+* {has_seuils_word} [Prononcer le mot du Seuil ★]  -> mortimer_seuil
+
+=== mortimer_seuil ===
+Tu inspires. Tu prononces le mot. Il sort de ta bouche comme une chose qu'on n'aurait jamais dû connaître — court, dense, plein.
+
+Mortimer s'arrête net. Quelque chose en lui se fissure. Le rire spectral devient une voix d'enfant, brièvement, puis se tait. Le sorcier te regarde comme s'il te reconnaissait — ou comme s'il reconnaissait celui qui t'a appris ce mot.
+
+« Tu… tu es allé jusqu'au seuil ? Toi ? »
+
+Il vacille. Tu ne sais pas si c'est de la rage ou du soulagement. Mais quand tu lèves ton arme, ses gestes sont plus lents, et le froid qu'il rayonnait s'est éloigné d'un pas.
+
+# stamina_bonus: 3
+
+* [Attaquer maintenant qu'il est ébranlé]    -> fight_sorcerer_phase1
 
 === fight_sorcerer_phase1 ===
 # combat: mortimer_spectre_phase1
@@ -1487,6 +1653,19 @@ L'amulette pulse encore contre ta poitrine, lente, lourde.
 * {has_protective_charm} [La briser à tes pieds, comme Tellor l'a conseillé ★] -> end_destruction
 * {has_stolen_loot} [Reculer dans la nuit, l'amulette dans ta bourse ★] -> end_dark
 * {has_protective_charm and has_dead_lord_talisman and has_spirit_blood} [Lever l'amulette vers le ciel et invoquer tout ce que tu as appris ★] -> end_transcendence
+* {has_tarnished_mirror} [Sortir le miroir terni avant de répondre ★] -> mirror_homecoming
+
+=== mirror_homecoming ===
+Tu glisses la main dans ta sacoche et en tires le petit miroir piqué d'écailles. L'espace d'un instant, tu lèves le verre vers ton propre visage — comme pour vérifier que tu es bien encore toi.
+
+Le reflet qui te regarde a vieilli. Pas de quelques jours. De quelques années. Ta mâchoire est plus dure, tes yeux plus creux ; il y a, dans le pli au coin de ta bouche, quelque chose que tu ne te connaissais pas.
+
+Tu ranges le miroir sans rien dire. Aldwin attend toujours sur le seuil.
+
+* [Remettre l'amulette à Aldwin]                                          -> end_honor
+* {has_protective_charm} [La briser à tes pieds ★]                       -> end_destruction
+* {has_stolen_loot} [Reculer dans la nuit, l'amulette dans ta bourse ★]  -> end_dark
+* {has_protective_charm and has_dead_lord_talisman and has_spirit_blood} [Lever l'amulette vers le ciel et invoquer tout ce que tu as appris ★] -> end_transcendence
 
 === end_honor ===
 Tu déposes l'amulette dans la paume tremblante d'Aldwin. Il la regarde un long moment, comme s'il craignait qu'elle ne disparaisse, puis il la serre contre sa poitrine et tu vois, pour la première fois depuis ta naissance, le vieux maître pleurer sans s'en cacher.
@@ -1497,8 +1676,18 @@ La nuit même, il la fait sceller dans une chambre forte sous le temple, gardée
 Tu prends le temps, plus tard, de retraverser la place jusqu'au banc de la vieille femme en noir. Tu lui rends la chaîne d'argent sans un mot. Elle la prend du bout des doigts, comme on toucherait une chose vivante. Ses yeux se vident lentement de quinze ans de deuil. Ce soir-là, elle quitte le banc, et on dit qu'elle a fini par dormir.
 }
 
-On grave ton nom au-dessus de la porte. Tu refuses, mais on le fait quand même.
+Aldwin veut qu'on grave ton nom au-dessus de la porte de la grand-salle. Que lui réponds-tu ?
 
+* [Accepter, mais demander qu'on y ajoute le nom du vieux Tomas]
+    Aldwin hoche la tête, comprenant sans qu'il faille en dire plus. Deux noms côte à côte. La veuve passe la main sur les lettres fraîchement gravées, longuement, le lendemain matin.
+
+* [Refuser. Le village n'a pas besoin d'un héros à graver]
+    Tu refuses, mais on le fait quand même — en lettres minuscules, en bas du linteau. Seuls les enfants des prochaines générations apprendront à le déchiffrer, et c'est sûrement comme ça que ça doit être.
+
+* [Partir à l'aube sans demander de récompense]
+    Tu pars avant que le village ne se réveille. Tu laisses ton manteau sur la chaise d'Aldwin, en guise d'adieu. La fontaine coule déjà, claire et patiente. Personne ne saura jamais où tu es allé ; certains diront que c'est mieux ainsi.
+
+-
 FIN — La voie de l'honneur.
 
 # chapter: ending
@@ -1511,8 +1700,20 @@ Tu laisses tomber l'amulette sur la pierre du seuil, et tu lèves le pommeau de 
 
 À l'orée du village, tu aperçois Tellor sous son grand chêne. Il hoche la tête. Il sourit. Il disparaît.
 
-Le lendemain, la fontaine coule à nouveau claire — mais cette fois, on dit qu'elle a un goût d'herbe, et de printemps, et de chose enfin libérée. Roncebrune renaît. Quelqu'un viendra peut-être te demander un jour pourquoi tu as brisé un objet sacré au lieu de le rendre. Tu sauras quoi répondre.
+Le lendemain, la fontaine coule à nouveau claire — mais cette fois, on dit qu'elle a un goût d'herbe, et de printemps, et de chose enfin libérée. Roncebrune renaît.
 
+Aldwin te regarde encore, hagard, les éclats de l'amulette à ses pieds. Que lui dis-tu ?
+
+* [« Ce que Mortimer a fait, il fallait le défaire »]
+    Il hoche lentement la tête. Tu vois qu'il ne comprend pas tout à fait, et que c'est sans doute mieux ainsi. Tu lui prends doucement le bras et tu le ramènes à l'intérieur, le laissant à ses prêtres et à sa fontaine retrouvée.
+
+* [« Demande à Tellor, quand tu le verras passer un soir »]
+    Aldwin tressaille. « Tellor est vivant ? » Tu ne réponds pas. Tu sors. Mais ce soir-là, le vieux maître reste assis sur le seuil jusqu'à l'aube, à scruter la lisière des arbres comme s'il guettait quelqu'un.
+
+* [Ne rien dire et tourner les talons]
+    Tu laisses Aldwin seul avec les éclats. Quelqu'un viendra peut-être te demander un jour pourquoi tu as brisé un objet sacré au lieu de le rendre. Tu sauras quoi répondre.
+
+-
 FIN — Tu as brisé le sortilège.
 
 # chapter: ending
@@ -1527,6 +1728,18 @@ Au matin, on retrouve le vieux maître sur sa chaise, mort, l'amulette n'est plu
 
 Roncebrune meurt enfin, comme elle aurait dû mourir cinquante ans plus tôt.
 
+Sous la première dalle de ton tombeau personnel, dans la chambre la plus haute, l'amulette pulse encore. Quel premier acte poses-tu, toi qui as pris la place de Mortimer ?
+
+* [Établir un trône d'os blanchis]
+    Tu fais venir les ossements de ceux qui ont essayé de t'arrêter, et tu en fais un siège. Les premiers serviteurs viennent d'eux-mêmes, attirés par quelque chose qu'ils n'arrivent pas à nommer. Tu les laisses entrer un par un.
+
+* [Murmurer à l'amulette le nom de quelqu'un que tu aimes]
+    Tu prononces le nom — celui de ta mère, de ta sœur, d'un ami d'enfance — et l'amulette le retient. Elle le retient pour toi. Pour toujours. Tu ne sais pas encore si c'est une protection que tu lui offres, ou une condamnation à laquelle tu la lies.
+
+* [Te regarder dans le verre poli au sommet du tombeau]
+    Le reflet qui te répond n'a pas tout à fait ton visage. Quelque chose y est ajouté — peut-être de Mortimer, peut-être de quelqu'un d'avant lui encore. Tu fermes les yeux, et tu comprends que tu ne pourras plus jamais les rouvrir sans voir cette autre chose.
+
+-
 FIN — Une ombre nouvelle s'allonge sur la forêt.
 
 # chapter: ending
@@ -1541,8 +1754,18 @@ L'amulette quitte ta paume et s'élève seule au-dessus de ta tête. Elle se met
 
 L'amulette se dissout dans le ciel en quatre étincelles qui partent vers les quatre points du monde. Mortimer est libéré pour de bon. Roncebrune renaîtra, mais aussi quatre autres villages, ailleurs, dont personne ne saura jamais le nom.
 
-Tu deviens, pour les générations qui suivront, le sorcier-protecteur de la vallée. Le monde a, peut-être, gagné un sage de plus.
+Tu deviens, pour les générations qui suivront, le sorcier-protecteur de la vallée. Où poses-tu désormais tes pas ?
 
+* [Rester près de Roncebrune et veiller sur la vallée]
+    Tu fais bâtir, à l'orée du bois, une cabane simple. Les enfants viendront t'y porter du pain, des questions, des bobos. Tu auras une longue, longue vie, et tu ne t'en plaindras pas.
+
+* [Partir à la recherche des quatre villages que les étincelles ont touchés]
+    Tu prends ton bâton, ton manteau, et tu te mets en route vers le levant. Tu ne reverras pas Roncebrune. Mais quatre villages, quelque part, t'attendront sans le savoir.
+
+* [Demander à Aldwin de t'enterrer auprès de tes parents quand l'heure viendra]
+    Le vieux maître pleure pour la deuxième fois de sa vie, et il promet. Tu vis encore quelques années paisibles, à enseigner aux jeunes de la combe ce que tu peux. Le jour où l'on te porte au cimetière, la fontaine de la place ralentit son chant un instant — puis reprend, comme si elle te saluait.
+
+-
 FIN — Le passage du sage.
 
 # chapter: ending

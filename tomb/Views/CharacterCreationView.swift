@@ -186,6 +186,12 @@ struct CharacterCreationView: View {
             RoundedRectangle(cornerRadius: 6, style: .continuous)
                 .stroke(Theme.inkFaded.opacity(0.45), lineWidth: 0.8)
         )
+        // Tap-to-skip : un appui sur la carte révèle immédiatement le
+        // total au lieu d'attendre la fin de l'animation des dés. Utile
+        // pour les joueurs qui relancent l'aventure plusieurs fois et
+        // n'ont pas envie de revoir 3 cycles complets de roll.
+        .contentShape(Rectangle())
+        .onTapGesture { skipReveal() }
     }
 
     // MARK: - Récapitulatif + difficulté
@@ -244,11 +250,15 @@ struct CharacterCreationView: View {
                     Button {
                         session.setDifficulty(d)
                     } label: {
-                        Text(d.title)
-                            .font(Theme.display(11))
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 8)
-                            .contentShape(Rectangle())
+                        VStack(spacing: 4) {
+                            Theme.icon(difficultyIcon(d), size: 14,
+                                       color: Theme.ink)
+                            Text(d.title)
+                                .font(Theme.display(11))
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 8)
+                        .contentShape(Rectangle())
                     }
                     .buttonStyle(DifficultyButtonStyle(selected: session.difficulty == d))
                 }
@@ -263,9 +273,22 @@ struct CharacterCreationView: View {
         }
     }
 
+    /// Asset pixel-art associé au niveau de difficulté.
+    private func difficultyIcon(_ d: Difficulty) -> String {
+        switch d {
+        case .adventurer: return "easy"
+        case .veteran:    return "medium"
+        case .legend:     return "hard"
+        }
+    }
+
     private var difficultyBanner: some View {
         let hasPenalty = session.difficulty.statPenalty != 0
-        let icon = hasPenalty ? "exclamationmark.triangle.fill" : "checkmark.seal.fill"
+        // Icône alignée sur le picker juste au-dessus : `easy` / `medium`
+        // / `hard` selon la difficulté courante. Évite de mélanger un SF
+        // Symbol générique (checkmark / triangle) avec le pixel-art du
+        // reste de l'UI.
+        let icon = difficultyIcon(session.difficulty)
         let tint: Color = hasPenalty ? Theme.blood : Theme.inkFaded
         let text: String = {
             if hasPenalty {
@@ -276,9 +299,7 @@ struct CharacterCreationView: View {
         }()
 
         return HStack(spacing: 8) {
-            Image(systemName: icon)
-                .foregroundColor(tint)
-                .font(.system(size: 12))
+            Theme.icon(icon, size: 14, color: tint)
             Text(text)
                 .font(Theme.display(11))
                 .foregroundColor(tint)
@@ -440,9 +461,33 @@ struct CharacterCreationView: View {
     private func scheduleReveal() {
         Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(diceDurationMs + 80))
+            guard !revealed else { return }
             withAnimation(.spring(response: 0.3, dampingFraction: 0.55)) {
                 revealed = true
             }
+        }
+    }
+
+    /// Tap-to-skip : si le total n'est pas encore révélé, on le fait
+    /// apparaître tout de suite. L'animation SceneKit des dés continue
+    /// brièvement (impossible à interrompre), mais le bouton « Continuer »
+    /// se présente immédiatement.
+    private func skipReveal() {
+        guard !revealed else { return }
+        // Ne déclenche le skip qu'une fois les valeurs effectivement
+        // tirées — sinon l'utilisateur taperait sur des placeholders et
+        // verrait apparaître « — = — » comme totaux.
+        let hasValues: Bool = {
+            switch phase {
+            case .stamina:    return staminaDice != nil
+            case .skill:      return skillDie != nil
+            case .luck:       return luckDie != nil
+            case .difficulty: return true
+            }
+        }()
+        guard hasValues else { return }
+        withAnimation(.spring(response: 0.25, dampingFraction: 0.6)) {
+            revealed = true
         }
     }
 

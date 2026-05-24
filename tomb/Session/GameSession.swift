@@ -47,12 +47,44 @@ final class GameSession: ObservableObject {
     // MARK: - Run statistics
 
     @Published var battlesWon: Int = 0
+    /// Horodatage du début de la run en cours. Set par
+    /// `startNewGameDirectly()`, conservé dans la sauvegarde et restauré à
+    /// la reprise. Nil tant qu'aucune partie n'a été démarrée — affiché à
+    /// la fin (« Temps de jeu : 47 min 12 s »). On accepte le biais
+    /// « player quits then resumes 3 days later » : pour ce jeu, c'est
+    /// précis à 1-2 sessions près et raconte mieux l'aventure que de
+    /// finasser sur le pause/reprise.
+    @Published var runStartedAt: Date? = nil
+    /// Nombre de combats remportés en moins de 6 rounds dans la run en
+    /// cours. Atteint 3 → succès « Hécatombe ». Reset au démarrage d'une
+    /// nouvelle aventure.
+    @Published var quickWinsThisRun: Int = 0
+    /// Compteur cumulatif de runs complétées (victoire ou défaite finale
+    /// autre que `death`). Persisté en UserDefaults. Cf. succès « Tombeau
+    /// revisité » (3+).
+    @Published var completedRuns: Int = 0
     @Published var battlesFled: Int = 0
     /// Chapitre narratif actuel — driven by Ink tags (`# chapter: <id>`).
     @Published var currentChapter: Chapter = .village
+    /// Transition cinématique en cours : fixé brièvement (~2.5 s) quand
+    /// le joueur franchit un nouveau chapitre, pour que la vue affiche
+    /// un overlay « Chapitre III — Le marais » par-dessus la narration.
+    /// Reset à nil par la vue après l'animation.
+    @Published var pendingChapterTransition: Chapter? = nil
     /// Issue de la partie. Set par le tag `# outcome: <id>` dans les knots
     /// de fin. Nil tant que l'aventure n'est pas terminée.
     @Published var finalOutcome: FinalOutcome? = nil
+    /// Cinématique de mort en cours. Posé à `true` au moment où l'outcome
+    /// `.death` est résolu, et reset à `false` par la vue après l'animation
+    /// d'épitaphe (~3 s). Permet de différer l'apparition de l'écran de fin
+    /// pour donner un poids dramatique à la mort.
+    @Published var deathCinematicActive: Bool = false
+    /// Items ramassés que le joueur n'a pas encore consultés dans l'écran
+    /// d'inventaire — affichés avec un pip doré « nouveau » dans la liste.
+    /// Pas persisté en save (état de session) : à la reprise, tous les
+    /// items sont considérés comme déjà vus, ce qui est cohérent avec le
+    /// fait que l'utilisateur les a probablement vus avant de quitter.
+    @Published var unseenItems: Set<String> = []
     /// Difficulté sélectionnée à la création — affecte le tirage des stats,
     /// les ennemis, et le multiplicateur de score.
     @Published var difficulty: Difficulty = .adventurer
@@ -107,7 +139,7 @@ final class GameSession: ObservableObject {
     private static let goldPriceRegex = #/\s*\(\$(\d+)\)\s*$/#
 
     /// Parse un texte de choix Ink brut : extrait les markers `★` (special)
-    /// et `[$N]` (coût en or), nettoie le texte affiché, renvoie le `Choice`.
+    /// et `($N)` (coût en or), nettoie le texte affiché, renvoie le `Choice`.
     /// Centralisé ici pour éviter de répéter la logique dans `advance()`.
     private static func parseChoice(rawText: String, index: Int) -> Choice {
         var text = rawText
@@ -125,7 +157,8 @@ final class GameSession: ObservableObject {
         }
 
         text = text.trimmingCharacters(in: .whitespaces)
-        return Choice(id: index, text: text, isSpecial: isSpecial, priceGold: price)
+        return Choice(id: index, text: text,
+                      isSpecial: isSpecial, priceGold: price)
     }
     /// Knot to jump to on victory for the in-progress combat.
     private var pendingBattleVictoryPath: String? = nil
@@ -159,6 +192,7 @@ final class GameSession: ObservableObject {
         discoveredEndings = Self.loadDiscoveredEndings()
         defeatedEnemies = Self.loadDefeatedEnemies()
         unlockedAchievements = Self.loadAchievements()
+        completedRuns = Self.loadCompletedRuns()
         // No auto-load. MenuView decides via resume() or startNewGame().
     }
 
@@ -267,20 +301,22 @@ final class GameSession: ObservableObject {
         battlesWon = 0
         battlesFled = 0
         potionsUsedThisRun = 0
+        quickWinsThisRun = 0
         currentChapter = .village
         finalOutcome = nil
+        runStartedAt = Date()
+        unseenItems = []
         // Fresh JS context (see also restart()).
         story = InkStory()
         loadStory()
         hasStarted = true
     }
 
-    /// "Recommencer l'aventure" from the ending screen: re-roll a new
-    /// character and dive straight into the adventure (no creation screen).
-    private func startNewGameWithFreshRoll() {
-        player = PlayerState.rolled()
-        startNewGameDirectly()
-    }
+    // `startNewGameWithFreshRoll` retiré : « Recommencer l'aventure »
+    // passe désormais par `startCharacterCreation()` (cf. `restart()`)
+    // pour que le joueur retrouve le rituel des jets de dés. L'ancienne
+    // version skippait la création, ce qui privait le ré-jeu de son
+    // moment d'identification au héros.
 
     /// Load the Ink source into `story`. On return, the story is on the
     /// first chunk of the intro.
@@ -394,11 +430,24 @@ final class GameSession: ObservableObject {
     /// itération (parce que `luckPromptResolved` est true).
     func triggerLuckRoll() {
         guard pendingLuckPrompt != nil else { return }
+        // Cache le bouton tout de suite : retour UI instantané, le joueur
+        // sent que son tap a été pris en compte.
         pendingLuckPrompt = nil
-        luckPromptResolved = true
         AmbientAudio.shared.play(.diceRoll)
-        advance()
-        luckPromptResolved = false
+        // ⚠️ Différer `advance()` au prochain runloop. Sans ça, l'appel
+        // synchrone enchaîne InkSwift (JavaScriptCore) + `showNarrativeLuck`
+        // + `deferLuckTestStatChange` + plusieurs `withAnimation` + state
+        // mutations, et bloque le main thread ~100–200 ms. Symptômes :
+        //   - le buffer audio du dice_roll grésille (CPU étouffé)
+        //   - UIKit lève « System gesture gate timed out » parce que la
+        //     phase de release du tap n'a pas pu être finalisée
+        // En déférant, le tap se termine proprement et SwiftUI re-render
+        // (bouton qui disparaît) avant qu'`advance()` ne reprenne la main.
+        DispatchQueue.main.async { [self] in
+            luckPromptResolved = true
+            advance()
+            luckPromptResolved = false
+        }
     }
 
     private func detectLuckPrompt(in tags: [String: String]) -> LuckPromptKind? {
@@ -411,6 +460,10 @@ final class GameSession: ObservableObject {
     func resolveBattle(_ outcome: BattleOutcome) {
         let victoryPath = pendingBattleVictoryPath
         let enemyId = pendingBattle?.enemy.id
+        // Capturer le compteur de rounds AVANT de relâcher pendingBattle :
+        // sert au succès « Hécatombe » (3 victoires en <6 rounds dans une
+        // même run).
+        let roundCount = pendingBattle?.roundCount ?? 0
         pendingBattle = nil
         pendingBattleVictoryPath = nil
         AmbientAudio.shared.exitBattle()
@@ -418,6 +471,9 @@ final class GameSession: ObservableObject {
         switch outcome {
         case .victory:
             battlesWon += 1
+            if roundCount > 0 && roundCount < 6 {
+                quickWinsThisRun += 1
+            }
             if let enemyId { recordDefeatedEnemy(enemyId) }
             if let path = victoryPath {
                 story.moveToKnitStitch(path, stitch: nil)
@@ -437,16 +493,51 @@ final class GameSession: ObservableObject {
 
     /// Restart the adventure from the intro while staying inside the game
     /// (triggered from the end-of-adventure "Recommencer l'aventure" button).
-    /// Re-rolls a fresh character directly (no creation screen).
+    /// Passe par la phase de jets de dés — re-rouler les stats fait partie
+    /// du rituel Fighting Fantasy et l'ancien comportement (« skip creation
+    /// screen ») privait le joueur de ce moment.
     func restart() {
-        startNewGameWithFreshRoll()
+        // On clear l'état de la run précédente avant d'entrer en création :
+        // ennemi en attente, illustration, états transitoires…
+        AmbientAudio.shared.exitBattle()
+        pendingBattle = nil
+        pendingBattleVictoryPath = nil
+        pendingIllustration = nil
+        pendingLuckPrompt = nil
+        pendingNarrativeLuck = nil
+        effectBurst = nil
+        pausedAccumulated = nil
+        pausedMessages = nil
+        luckPromptResolved = false
+        finalOutcome = nil
+        isEnded = false
+        hasStarted = false
+        startCharacterCreation()
     }
 
-    /// Return to the main menu without touching the save.
+    /// Return to the main menu. Touche normalement pas à la sauvegarde
+    /// (pour qu'une partie en cours soit reprenable depuis le menu) —
+    /// sauf si la partie s'est terminée (`finalOutcome != nil`) : dans
+    /// ce cas, on efface la sauvegarde par sécurité pour que le menu
+    /// affiche « Commencer la partie » et non « Reprendre » + écran de
+    /// fin.
     func backToMenu() {
         hasStarted = false
         isCreatingCharacter = false
         characterRoll = nil
+        // Si on quitte en plein milieu d'un combat, la musique de combat
+        // continuait tourner sur le menu d'accueil. `exitBattle()` est
+        // idempotent (guard sur `isInBattle`) — safe à appeler dans tous
+        // les cas. Crossfade ambient ↔ combat se résout proprement.
+        AmbientAudio.shared.exitBattle()
+        // Reset aussi l'état combat côté session pour que le HUD ne
+        // re-rentre pas en mode combat si le joueur reprend la partie.
+        pendingBattle = nil
+        pendingIllustration = nil
+        if finalOutcome != nil || isEnded {
+            clearSavedState()
+            objectWillChange.send()
+        }
     }
 
     // MARK: - Items consommables & équipement
@@ -717,7 +808,15 @@ final class GameSession: ObservableObject {
         lastMessages = messages
         isEnded = !story.canContinue && story.options.isEmpty
 
-        if isEnded {
+        // Filet de sécurité : si une fin a été marquée via `# outcome: ...`
+        // (death, honour, destruction, dark, transcendence), on traite la
+        // partie comme finie et on efface la sauvegarde — même si Ink dit
+        // encore `canContinue=true` pour une raison parasite (cas observé
+        // sur la fin death où le knot ne laissait pas le runtime tomber
+        // proprement sur END avant le check). Sans ça, on re-sauvegardait
+        // l'état « écran de fin » et le menu proposait « Reprendre » qui
+        // ramenait sur la page de fin.
+        if isEnded || finalOutcome != nil {
             clearSavedState()
         } else {
             saveCurrentState()
@@ -792,8 +891,21 @@ final class GameSession: ObservableObject {
     private func applyEffectTags(_ tags: [String: String],
                                   messages: inout [EventMessage]) -> Bool {
         // chapter: <id> — switch the displayed chapter heading.
+        // En plus de mettre à jour `currentChapter`, on déclenche une
+        // transition cinématique (fondu + titre plein écran) si on
+        // change vraiment de chapitre. La vue consomme le signal et le
+        // reset à nil après son animation (~2.5 s).
         if let raw = tags["chapter"], let chap = Chapter(rawValue: raw) {
+            let previous = currentChapter
             currentChapter = chap
+            if chap != previous {
+                pendingChapterTransition = chap
+                // Drone d'ambiance par chapitre : on rebias le volume du
+                // loop d'exploration pour évoquer l'atmosphère (village
+                // aéré → tombeau oppressant). Ramp interne d'1.2s pour
+                // ne pas claquer.
+                AmbientAudio.shared.setChapterAmbience(chap)
+            }
         }
 
         // illustration: <name> — affiche une planche pleine page que le
@@ -804,9 +916,39 @@ final class GameSession: ObservableObject {
         }
 
         // outcome: <id> — final outcome of the adventure (for the ending screen).
+        //
+        // ⚠️ On clear la sauvegarde DÈS QU'UN OUTCOME EST POSÉ (death,
+        // honour, destruction, dark, transcendence). Sans ça, si le joueur
+        // mourait puis revenait au menu et cliquait « Reprendre », il
+        // restaurait l'état sauvegardé juste avant la mort et pouvait
+        // recommencer le combat à l'infini — bypass de la mort permanente.
+        // Le `clearSavedState()` de fin d'`advance()` (sur isEnded)
+        // suffisait quand le knot final terminait proprement, mais ce
+        // n'est pas garanti dans tous les cas — on sécurise ici.
         if let raw = tags["outcome"], let outcome = FinalOutcome(rawValue: raw) {
             finalOutcome = outcome
             recordDiscoveredEnding(outcome)
+            clearSavedState()
+            // Cinématique de mort : on déclenche le voile rouge → noir +
+            // épitaphe avant que l'écran de fin n'apparaisse, pour marquer
+            // dramatiquement le moment. Les autres fins (honour, dark…)
+            // restent en révélation directe — ce sont des moments de
+            // triomphe ou de mystère, pas de violence subie.
+            //
+            // ⚠️ Le knot `death` du .ink pose à la fois `# chapter: ending`
+            // et `# outcome: death`. Sans ce reset, on voyait pendant ~4 s
+            // l'overlay « Épilogue » (chapitre) ET la cinématique d'épitaphe
+            // s'empiler sur deux z-index différents. La mort prime : on
+            // efface la transition de chapitre.
+            if outcome == .death {
+                pendingChapterTransition = nil
+                deathCinematicActive = true
+            } else {
+                // Méta-progression : on compte les runs qui se sont
+                // achevées sur autre chose qu'une mort. Sert au succès
+                // « Tombeau revisité » (3+ runs complets cumulés).
+                recordCompletedRun()
+            }
         }
 
         // add_item: <id> ou add_item: <id1>,<id2>,…
@@ -815,20 +957,37 @@ final class GameSession: ObservableObject {
         // `# add_item: X` + `# add_item: Y` dans le même knot s'écrasent
         // (seul le dernier survit). Pour permettre les pickups multiples,
         // on accepte la valeur comma-separated et on itère.
+        //
+        // Idempotence : certains items peuvent être débloqués via plusieurs
+        // chemins indépendants (ex. `rumour_mortimer` proposé par
+        // l'auberge ET par la sorcière). Si le joueur a déjà l'item, on
+        // ré-affirme la VAR Ink (au cas où) mais on ne re-pousse PAS
+        // message / popin / son — sinon on a la même rumeur annoncée deux
+        // fois et le joueur a l'impression que le jeu se répète.
         if let raw = tags["add_item"] {
             let items = raw.split(separator: ",")
                 .map { $0.trimmingCharacters(in: .whitespaces) }
                 .filter { !$0.isEmpty }
             for item in items {
+                let alreadyOwned = player.items.contains(item)
                 player.items.insert(item)
                 story.setVariable("has_\(item)", to: 1)
+                // Item déjà possédé → on garde la VAR Ink à 1 (idempotent)
+                // mais on n'ajoute aucun feedback UI/sonore : le joueur l'a
+                // déjà vu lors du premier pickup.
+                guard !alreadyOwned else { continue }
+                // Marque l'item comme « non vu » pour afficher le badge
+                // doré dans l'inventaire jusqu'à ce que le joueur ouvre
+                // la feuille et le consulte.
+                unseenItems.insert(item)
                 messages.append(EventMessage(
                     text: "Tu obtiens : \(itemDisplayName(item)).",
-                    kind: .gain
+                    kind: .gain,
+                    iconOverride: "get_items"
                 ))
                 AmbientAudio.shared.play(.gainItem)
                 showBurst(EffectBurst(
-                    icon: "sparkles",
+                    icon: "get_items",
                     title: "Tu obtiens",
                     subtitle: itemDisplayName(item),
                     tint: Theme.oldGold
@@ -884,7 +1043,8 @@ final class GameSession: ObservableObject {
             story.setVariable("gold", to: player.gold)
             messages.append(EventMessage(
                 text: "Tu dépenses \(n) pièce\(n > 1 ? "s" : "") d'or.",
-                kind: .loss
+                kind: .loss,
+                iconOverride: "coin"
             ))
         }
 
@@ -899,6 +1059,14 @@ final class GameSession: ObservableObject {
         }
 
         // skill_bonus: <n> — permanent +n to Skill and SkillMax.
+        //
+        // ⚠️ Cohérence UI : les bonus permanents de stats (skill/stamina/
+        // luck) ne déclenchent PLUS de popin `EffectBurst` — uniquement
+        // une `MarginNote` dans le journal. Avant, certains events stats
+        // popinaient et d'autres non (damage / heal restaient simples
+        // bandeaux), créant une inconsistance ressentie comme du bruit.
+        // Les popins sont désormais réservées aux `add_item` (gain d'objet
+        // = vrai « moment de récompense » distinct des variations chiffrées).
         if let s = tags["skill_bonus"], let n = Int(s) {
             player.skill += n
             player.skillMax += n
@@ -907,12 +1075,6 @@ final class GameSession: ObservableObject {
                 kind: .gain
             ))
             AmbientAudio.shared.play(.lucky)
-            showBurst(EffectBurst(
-                icon: "ability",
-                title: "Habileté +\(n)",
-                subtitle: "Bonus permanent",
-                tint: Theme.inkBlue
-            ))
         }
 
         // stamina_bonus: <n> — permanent +n to Stamina max.
@@ -923,32 +1085,35 @@ final class GameSession: ObservableObject {
             player.stamina += n
             messages.append(EventMessage(
                 text: "Ton Endurance maximale progresse de \(n) point\(n > 1 ? "s" : "").",
-                kind: .gain
+                kind: .gain,
+                iconOverride: "gain_life"
             ))
             AmbientAudio.shared.play(.lucky)
-            showBurst(EffectBurst(
-                icon: "life",
-                title: "Endurance +\(n)",
-                subtitle: "Maximum élevé",
-                tint: Theme.blood
-            ))
         }
 
-        // luck_bonus: <n> — permanent +n to Luck and LuckMax.
+        // luck_bonus: <n> — permanent +n to Luck and LuckMax (n peut être
+        // négatif pour les malédictions silencieuses, ex. mendiant ignoré).
         if let s = tags["luck_bonus"], let n = Int(s) {
             player.luck += n
             player.luckMax += n
-            messages.append(EventMessage(
-                text: "Ta Chance progresse de \(n) point\(n > 1 ? "s" : "").",
-                kind: .gain
-            ))
-            AmbientAudio.shared.play(.lucky)
-            showBurst(EffectBurst(
-                icon: "sparkles",
-                title: "Chance +\(n)",
-                subtitle: "Bonus permanent",
-                tint: Theme.verdigris
-            ))
+            if n > 0 {
+                messages.append(EventMessage(
+                    text: "Ta Chance progresse de \(n) point\(n > 1 ? "s" : "").",
+                    kind: .gain,
+                    iconOverride: "gain_luck"
+                ))
+                AmbientAudio.shared.play(.lucky)
+            } else if n < 0 {
+                // Malédiction : ton-doux, message en italique discret,
+                // pas de son joyeux. Le récit a déjà décrit ce qui s'est
+                // passé — on ne mécanise pas la souffrance.
+                let lost = abs(n)
+                messages.append(EventMessage(
+                    text: "Quelque chose en toi s'éteint un peu. Ta Chance recule de \(lost) point\(lost > 1 ? "s" : "").",
+                    kind: .unlucky
+                ))
+                AmbientAudio.shared.play(.unlucky)
+            }
         }
 
         // luck_restore: Luck reset to its maximum.
@@ -956,7 +1121,8 @@ final class GameSession: ObservableObject {
             player.luck = player.luckMax
             messages.append(EventMessage(
                 text: "Ta Chance est restaurée (\(player.luckMax)).",
-                kind: .lucky
+                kind: .lucky,
+                iconOverride: "gain_luck"
             ))
             AmbientAudio.shared.play(.lucky)
         }
@@ -977,7 +1143,8 @@ final class GameSession: ObservableObject {
             if lucky {
                 messages.append(EventMessage(
                     text: "Chanceux (\(roll) ≤ \(threshold)). Un sort se grave dans ta mémoire et restaure ta Chance.",
-                    kind: .lucky
+                    kind: .lucky,
+                    iconOverride: "luck_up"
                 ))
                 AmbientAudio.shared.play(.lucky)
                 deferLuckTestStatChange {
@@ -1096,6 +1263,7 @@ final class GameSession: ObservableObject {
     private static let kDiscoveredEndings = "tomb.meta.endings"
     private static let kDefeatedEnemies   = "tomb.meta.bestiary"
     private static let kAchievements      = "tomb.meta.achievements"
+    private static let kCompletedRuns     = "tomb.meta.completed_runs"
 
     /// Marque une fin comme découverte et persiste. Appelé quand l'aventure
     /// se termine sur un knot taggé `# outcome: <id>`.
@@ -1140,6 +1308,22 @@ final class GameSession: ObservableObject {
         UserDefaults.standard.set(Array(set), forKey: kAchievements)
     }
 
+    private static func loadCompletedRuns() -> Int {
+        UserDefaults.standard.integer(forKey: kCompletedRuns)
+    }
+
+    private static func persistCompletedRuns(_ count: Int) {
+        UserDefaults.standard.set(count, forKey: kCompletedRuns)
+    }
+
+    /// Incrémente le compteur de runs terminées et persiste. Appelé une
+    /// fois quand un outcome (autre que death) est posé en fin
+    /// d'aventure.
+    private func recordCompletedRun() {
+        completedRuns += 1
+        Self.persistCompletedRuns(completedRuns)
+    }
+
     /// Re-évalue toutes les conditions et débloque les nouveaux hauts faits.
     /// Appelé à chaque event clé (fin d'`advance()`, victoire de combat,
     /// `useItem`). Émet un burst pour chaque déblocage, espacé de ~1.5 s
@@ -1166,7 +1350,10 @@ final class GameSession: ObservableObject {
             return battlesWon >= 1
 
         case AchievementsCatalog.ID.pacifist:
-            return finalOutcome == .honour && battlesWon == 0
+            // Mortimer phase 1 + 2 sont des combats obligatoires sur le
+            // chemin honor (aucune option non-combat pour récupérer
+            // l'amulette). Tolère donc jusqu'à 2 victoires.
+            return finalOutcome == .honour && battlesWon <= 2
 
         case AchievementsCatalog.ID.ironMan:
             return finalOutcome != nil && finalOutcome != .death && potionsUsedThisRun == 0
@@ -1179,11 +1366,14 @@ final class GameSession: ObservableObject {
 
         case AchievementsCatalog.ID.bestiaryFull:
             // Les ennemis du bestiaire affichable (cf. BestiaryView.orderedIds)
-            // forment le set "complet". `mortimer_spectre` (base) n'apparaît
-            // que dans les saves antérieures au multi-phase ; on le tolère.
+            // forment le set "complet" — 17 entrées dont 2 optionnelles
+            // (forest_lynx, marsh_wraith) qui demandent d'aller chercher
+            // les chemins cachés.
             let required: Set<String> = [
                 "goblin_scout", "forest_wolves", "forest_boar",
-                "forest_lycanthrope", "marsh_serpent", "tomb_ghoul",
+                "forest_lycanthrope", "forest_lynx",
+                "marsh_serpent", "marsh_wraith",
+                "tomb_ghoul",
                 "skeleton_guardians", "gallery_skeletons", "flooded_eels",
                 "tomb_basilisk", "treasure_guardian", "vengeful_spirit",
                 "pit_skeletons", "mortimer_spectre_phase1",
@@ -1222,6 +1412,25 @@ final class GameSession: ObservableObject {
 
         case AchievementsCatalog.ID.perfectRun:
             return finalOutcome == .transcendence
+
+        case AchievementsCatalog.ID.threeEndings:
+            return discoveredEndings.count >= 3
+
+        case AchievementsCatalog.ID.bestiaryHalf:
+            return defeatedEnemies.count >= 10
+
+        case AchievementsCatalog.ID.speedrunner:
+            // Doit avoir un outcome (run finie), pas une mort, et durée < 20 min.
+            guard let start = runStartedAt,
+                  finalOutcome != nil,
+                  finalOutcome != .death else { return false }
+            return Date().timeIntervalSince(start) < 20 * 60
+
+        case AchievementsCatalog.ID.tombeauRevisited:
+            return completedRuns >= 3
+
+        case AchievementsCatalog.ID.hecatomb:
+            return quickWinsThisRun >= 3
 
         default:
             return false
@@ -1271,6 +1480,10 @@ final class GameSession: ObservableObject {
         /// champ. À l'absence, on retombe sur 0 — le compteur reprend à zéro
         /// pour la partie en cours.
         let potionsUsedThisRun: Int?
+        /// Optionnel : date de début de la run en cours. À l'absence (saves
+        /// antérieures), le compteur de temps n'est pas affiché à la fin
+        /// — pas critique, on évite juste un faux chiffre incohérent.
+        let runStartedAt: Date?
     }
 
     /// Serialises the current narrative state into UserDefaults. Only called
@@ -1286,7 +1499,8 @@ final class GameSession: ObservableObject {
             battlesFled: battlesFled,
             currentChapter: currentChapter,
             difficulty: difficulty,
-            potionsUsedThisRun: potionsUsedThisRun
+            potionsUsedThisRun: potionsUsedThisRun,
+            runStartedAt: runStartedAt
         )
         if let data = try? JSONEncoder().encode(save) {
             UserDefaults.standard.set(data, forKey: Self.saveKey)
@@ -1323,6 +1537,7 @@ final class GameSession: ObservableObject {
         potionsUsedThisRun = save.potionsUsedThisRun ?? 0
         currentChapter = save.currentChapter
         difficulty = save.difficulty
+        runStartedAt = save.runStartedAt
         isEnded = false
         pendingBattle = nil
         return true
@@ -1417,6 +1632,27 @@ final class GameSession: ObservableObject {
     }
 
     // MARK: - Score & grade
+
+    /// Durée écoulée depuis le début de la run, formatée en
+    /// « 47 min 12 s » / « 1 h 23 min ». Nil si la run n'a pas démarré ou
+    /// si la sauvegarde précédait l'ajout de `runStartedAt`. Capture le
+    /// moment de l'appel — pour un affichage live, ré-évaluer
+    /// périodiquement.
+    var runDurationText: String? {
+        guard let start = runStartedAt else { return nil }
+        let elapsed = Int(Date().timeIntervalSince(start))
+        guard elapsed > 0 else { return "moins d'une seconde" }
+        let h = elapsed / 3600
+        let m = (elapsed % 3600) / 60
+        let s = elapsed % 60
+        if h > 0 {
+            return "\(h) h \(String(format: "%02d", m)) min"
+        } else if m > 0 {
+            return "\(m) min \(String(format: "%02d", s)) s"
+        } else {
+            return "\(s) s"
+        }
+    }
 
     /// Score final de l'aventure : combats, exploration, état du héros, fin
     /// choisie. Calculé à la volée à partir du PlayerState et des stats.

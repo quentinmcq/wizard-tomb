@@ -47,18 +47,16 @@ struct PendingDiceRoll: Equatable {
 
 /// Sous-classe de SCNView qui se déclare invisible au UIFocus engine.
 ///
-/// Le warning iOS "implements focusItemsInRect: caching for linear focus…"
-/// est techniquement **non-supprimable depuis l'app** : UIKit le déclenche
-/// par simple détection d'implémentation du selector ObjC, indépendamment
-/// de ce que retourne notre override. On garde quand même la sous-classe
-/// pour signaler proprement à l'accessibilité que la vue n'est pas
-/// focusable (`canBecomeFocused = false`), et on lui donne un nom ObjC
-/// explicite via `@objc(...)` pour que le log soit au moins lisible
-/// (sinon Swift le mange en `_TtC4tomb…` à cause de `private`).
+/// On NE override PAS `focusItems(in:)` : c'est précisément cet override
+/// qui déclenchait le warning iOS « NonFocusableSCNView implements
+/// focusItemsInRect: caching for linear focus movement is limited ».
+/// UIKit détectait notre selector ObjC et logguait l'avertissement, sans
+/// que la valeur retournée par notre override (`[]`) y change quoi que
+/// ce soit en pratique. `canBecomeFocused = false` + `accessibilityElementsHidden`
+/// suffisent largement pour neutraliser la focus engine sur ces dés.
 @objc(NonFocusableSCNView)
 private final class NonFocusableSCNView: SCNView {
     override var canBecomeFocused: Bool { false }
-    override func focusItems(in rect: CGRect) -> [any UIFocusItem] { [] }
 }
 
 struct Dice3DView: UIViewRepresentable {
@@ -304,6 +302,11 @@ struct Dice3DView: UIViewRepresentable {
 struct DiceRollOverlay: View {
     let roll: PendingDiceRoll
     var durationMs: Int = 1300
+    /// Quand le parent passe `true`, on révèle immédiatement les totaux
+    /// (utilisé pour le tap-to-skip de l'animation). L'animation SceneKit
+    /// continue brièvement mais le joueur peut déjà lire le résultat et
+    /// les boutons réapparaissent dès la résolution.
+    var revealEarly: Bool = false
 
     @State private var sumsRevealed = false
 
@@ -352,7 +355,16 @@ struct DiceRollOverlay: View {
         .task {
             // Let the dice roll before revealing the total.
             try? await Task.sleep(for: .milliseconds(durationMs + 80))
+            guard !sumsRevealed else { return }
             withAnimation(.spring(response: 0.3, dampingFraction: 0.55)) {
+                sumsRevealed = true
+            }
+        }
+        .onChange(of: revealEarly) { _, new in
+            // Tap-to-skip déclenché côté parent : on dévoile les totaux
+            // immédiatement même si l'animation des dés tourne encore.
+            guard new, !sumsRevealed else { return }
+            withAnimation(.spring(response: 0.25, dampingFraction: 0.6)) {
                 sumsRevealed = true
             }
         }

@@ -4,7 +4,9 @@
 //  joués en plus du drone d'ambiance. Aucun fichier audio requis.
 //
 
-import AVFoundation
+// Cf. note dans AmbientAudio.swift : @preconcurrency silence les warnings
+// Sendable de AVFAudio non encore audité par Apple côté Swift 6.
+@preconcurrency import AVFoundation
 import Foundation
 
 enum SoundEvent: CaseIterable {
@@ -20,6 +22,8 @@ enum SoundEvent: CaseIterable {
     case death         // fin d'aventure mort : note grave qui s'évanouit
     case pageTurn      // bruissement de page tournée (entre passages)
     case buttonTap     // clic UI sec sur un bouton (hors choix d'histoire)
+    case chapterStinger // entrée dans un nouveau chapitre : 3-note solennel
+    case epitaph       // mort cinématique : note basse + cloche d'épitaphe
 }
 
 enum SoundSynth {
@@ -41,6 +45,8 @@ enum SoundSynth {
         case .death:    return death(format: format)
         case .pageTurn: return pageTurn(format: format)
         case .buttonTap: return buttonTap(format: format)
+        case .chapterStinger: return chapterStinger(format: format)
+        case .epitaph: return epitaph(format: format)
         }
     }
 
@@ -175,16 +181,20 @@ enum SoundSynth {
     }
 
     private static func buttonTap(format: AVAudioFormat) -> AVAudioPCMBuffer? {
-        // "Thunk" chaud et bref — comme un doigt qui pose une pièce sur du
-        // bois. Plus grave que la version précédente (800 Hz au lieu de
-        // 1900 Hz), bruit blanc divisé par 3, decay un peu plus long pour
-        // arrondir l'attaque. Doit rester sous le seuil de fatigue auditive
-        // sur usage répétitif (1 clic par paragraphe).
-        return synth(format: format, durationS: 0.10) { t in
-            let env = exp(-t * 30)
-            let click = Double.random(in: -1...1) * 0.10 * env
-            let tone  = sine(800.0, t) * 0.16 * env
-            let sub   = sine(400.0, t) * 0.10 * env
+        // "Thunk" feutré, encore plus grave. Bascule de 800/400 Hz à
+        // 350/175 Hz : on quitte le spectre médium-haut où le clic est
+        // perçu comme métallique/aigu, et on tombe dans une zone plus
+        // « bois mat / objet posé doucement ». L'attaque est aussi
+        // arrondie (decay 20 au lieu de 30, durée 130 ms au lieu de 100)
+        // pour éviter le "tic" sec qui agace en usage répétitif.
+        return synth(format: format, durationS: 0.13) { t in
+            // Bruit blanc encore plus discret (0.10 → 0.06) : le « click »
+            // de la composante random était la source principale de
+            // l'aigu perçu.
+            let env = exp(-t * 20)
+            let click = Double.random(in: -1...1) * 0.06 * env
+            let tone  = sine(350.0, t) * 0.18 * env
+            let sub   = sine(175.0, t) * 0.12 * env
             return click + tone + sub
         }
     }
@@ -198,6 +208,46 @@ enum SoundSynth {
             let sub         = sine(55.0,  t) * 0.30 * env
             let noise       = Double.random(in: -1...1) * 0.04 * env
             return fundamental + octave + sub + noise
+        }
+    }
+
+    /// Stinger d'entrée dans un nouveau chapitre. Tierce mineure
+    /// ascendante (D-F-A) avec un long sustain — sonne « ancien »,
+    /// solennel, médiéval, sans verser dans la fanfare héroïque.
+    /// Synchronisé sur l'overlay de transition (fondu noir + titre).
+    private static func chapterStinger(format: AVAudioFormat) -> AVAudioPCMBuffer? {
+        return synth(format: format, durationS: 2.2) { t in
+            // D3 → F3 → A3 — accord ouvert ouvrant sur une cinquième
+            // augmentée pour rester mystérieux.
+            let n1 = noteEnv(t: t, start: 0.00, attack: 0.05, decay: 1.40)
+            let n2 = noteEnv(t: t, start: 0.30, attack: 0.05, decay: 1.30)
+            let n3 = noteEnv(t: t, start: 0.62, attack: 0.05, decay: 1.50)
+            let s1 = (sine(146.83, t) + sine(293.66, t) * 0.35) * 0.22 * n1
+            let s2 = (sine(174.61, t) + sine(349.23, t) * 0.30) * 0.20 * n2
+            let s3 = (sine(220.00, t) + sine(440.00, t) * 0.40
+                     + sine(880.00, t) * 0.15) * 0.22 * n3
+            // Léger souffle d'ambiance pour casser le sinus trop pur.
+            let air = Double.random(in: -1...1) * 0.015 * exp(-abs(t - 0.6) * 1.2)
+            return s1 + s2 + s3 + air
+        }
+    }
+
+    /// Stinger d'épitaphe joué pendant la cinématique de mort. Cloche
+    /// grave qui frappe une fois, harmoniques qui s'épanouissent puis
+    /// résonance qui s'étire dans le silence. Distinct de `death`
+    /// (utilisé pour la défaite en combat, plus court).
+    private static func epitaph(format: AVAudioFormat) -> AVAudioPCMBuffer? {
+        return synth(format: format, durationS: 3.2) { t in
+            // Attaque sec puis decay lent qui imite la cloche.
+            let env = exp(-t * 0.9)
+            let strike = exp(-t * 30) * 0.8           // impact initial
+            let fundamental = sine(98.0, t) * 0.40 * env      // G2
+            let third       = sine(123.47, t) * 0.20 * env    // B2
+            let fifth       = sine(146.83, t) * 0.25 * env    // D3
+            let octave      = sine(196.0, t) * 0.10 * env     // G3
+            let sub         = sine(49.0, t) * 0.35 * env      // sub low
+            let noise       = Double.random(in: -1...1) * 0.04 * env
+            return (fundamental + third + fifth + octave + sub) * (1 + strike) + noise
         }
     }
 

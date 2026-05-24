@@ -64,7 +64,9 @@ struct Choice: Identifiable, Codable {
     /// est rendue grisée et non cliquable côté UI.
     let priceGold: Int?
 
-    init(id: Int, text: String, isSpecial: Bool = false, priceGold: Int? = nil) {
+    init(id: Int, text: String,
+         isSpecial: Bool = false,
+         priceGold: Int? = nil) {
         self.id = id
         self.text = text
         self.isSpecial = isSpecial
@@ -101,11 +103,28 @@ struct EventMessage: Identifiable, Codable, Equatable {
     let id: UUID
     let text: String
     let kind: Kind
+    /// Override de l'icône asset (ex. `get_items`, `coin`, `gain_luck`,
+    /// `gain_life`) quand on veut une marge plus parlante que le pictogramme
+    /// dérivé de `kind`. Nil = on retombe sur la table par `kind` dans
+    /// `MarginNote`. Optionnel et `decodeIfPresent` côté Codable pour rester
+    /// compatible avec les saves antérieures à cette feature.
+    let iconOverride: String?
 
-    init(text: String, kind: Kind) {
+    init(text: String, kind: Kind, iconOverride: String? = nil) {
         self.id = UUID()
         self.text = text
         self.kind = kind
+        self.iconOverride = iconOverride
+    }
+
+    enum CodingKeys: String, CodingKey { case id, text, kind, iconOverride }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try c.decode(UUID.self, forKey: .id)
+        self.text = try c.decode(String.self, forKey: .text)
+        self.kind = try c.decode(Kind.self, forKey: .kind)
+        self.iconOverride = try c.decodeIfPresent(String.self, forKey: .iconOverride)
     }
 }
 
@@ -116,6 +135,10 @@ struct Enemy: Equatable {
     /// portrait dans `tomb/Images/<id>.jpg`.
     let id: String
     let name: String
+    /// Sous-titre poétique façon Fighting Fantasy (« Le rôdeur silencieux »,
+    /// « La voix patiente »…). Affiché en italique sous le nom dans la
+    /// carte de combat et le bestiaire. Nil = pas de sous-titre.
+    let subtitle: String?
     /// `var` so passive bonuses (player items, e.g. protective charm vs the
     /// spectre) can adjust the enemy's Skill at combat setup time.
     var skill: Int
@@ -129,10 +152,12 @@ struct Enemy: Equatable {
     /// dans la carte de combat. Nil = pas d'aptitude particulière.
     let abilityNote: String?
 
-    init(id: String, name: String, skill: Int, stamina: Int,
+    init(id: String, name: String, subtitle: String? = nil,
+         skill: Int, stamina: Int,
          damageBonus: Int = 0, abilityNote: String? = nil) {
         self.id = id
         self.name = name
+        self.subtitle = subtitle
         self.skill = skill
         self.stamina = stamina
         self.staminaMax = stamina
@@ -312,6 +337,21 @@ enum Chapter: String, Codable, CaseIterable {
         case .tomb:       return "Chapitre V — Le tombeau"
         case .chamber:    return "Chapitre VI — La chambre voûtée"
         case .homecoming: return "Chapitre VII — Le retour"
+        case .ending:     return "Épilogue"
+        }
+    }
+
+    /// Variante courte pour les emplacements contraints (chip du HUD,
+    /// fil d'Ariane). Sans la numérotation romaine ni le mot « Chapitre ».
+    var shortTitle: String {
+        switch self {
+        case .village:    return "Le village"
+        case .forest:     return "La forêt"
+        case .marsh:      return "Le marais"
+        case .ruins:      return "Les ruines"
+        case .tomb:       return "Le tombeau"
+        case .chamber:    return "La chambre voûtée"
+        case .homecoming: return "Le retour"
         case .ending:     return "Épilogue"
         }
     }

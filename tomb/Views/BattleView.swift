@@ -30,6 +30,16 @@ struct BattleView: View {
     /// #8 — Affiche le dialogue de confirmation avant la tentative de
     /// fuite. Une seule chance, on demande confirmation.
     @State private var showFleeConfirm: Bool = false
+    /// Tap-to-skip : work item de résolution du roll en cours. Posé par
+    /// `performAttack/Flee/Luck` au moment du `asyncAfter`. Quand le joueur
+    /// tape sur l'overlay des dés pendant le spin, on appelle `.perform()`
+    /// pour exécuter la résolution immédiatement puis `.cancel()` pour
+    /// empêcher le firing différé. Nil quand aucun roll n'est en cours.
+    @State private var pendingResolveWork: DispatchWorkItem? = nil
+    /// Signale à `DiceRollOverlay` qu'il doit révéler les totaux tout de
+    /// suite (au lieu d'attendre `durationMs + 80 ms`). Reset à `false`
+    /// avant chaque nouveau roll.
+    @State private var revealRollEarly: Bool = false
 
     /// Durée totale de l'animation des dés (chute + rotation + bounce).
     private let rollMs = 1600
@@ -105,13 +115,29 @@ struct BattleView: View {
     private var actionArea: some View {
         VStack(spacing: 14) {
             if let pendingRoll {
-                DiceRollOverlay(roll: pendingRoll, durationMs: currentRollMs)
+                DiceRollOverlay(roll: pendingRoll,
+                                durationMs: currentRollMs,
+                                revealEarly: revealRollEarly)
                     .id(pendingRoll.id)
                     .transition(.opacity)
+                    // Tap pour écourter l'attente : on déclenche
+                    // immédiatement la résolution du round + la révélation
+                    // des totaux. Pas de double-tap, pas de gesture
+                    // complexe — un tap simple sur la zone des dés.
+                    .contentShape(Rectangle())
+                    .onTapGesture { skipDiceRoll() }
             }
             if !isRolling {
                 actionBar
                     .transition(.opacity)
+                    // Pendant le fade-out (0.25 s) la barre reste hit-
+                    // testable par défaut — un joueur qui spamme « Attaquer »
+                    // déclenchait alors 2-3 attaques enchaînées (engine
+                    // qui résout APRÈS qu'un coup a déjà tué l'ennemi
+                    // → logs aberrants « tu t'effondres / squelette
+                    // s'écroule / tu touches… »). On coupe explicitement
+                    // hit-test + son du bouton pendant le roll en cours.
+                    .allowsHitTesting(!isRolling)
             }
         }
         .animation(.easeInOut(duration: 0.25), value: isRolling)
@@ -222,6 +248,12 @@ struct BattleView: View {
     // MARK: - Actions avec animation de dés
 
     private func performAttack() {
+        // Defense in depth : si la barre d'action n'a pas encore fini son
+        // fade-out OU si une résolution est en queue, on ignore le tap
+        // supplémentaire. Sans ça, un spam de boutons enchaînait plusieurs
+        // attaques sur le même round (logs aberrants, son joué N fois).
+        guard !isRolling else { return }
+
         let p1 = Int.random(in: 1...6)
         let p2 = Int.random(in: 1...6)
         let e1 = Int.random(in: 1...6)
@@ -241,6 +273,7 @@ struct BattleView: View {
 
         AmbientAudio.shared.play(.diceRoll)
         isRolling = true
+        revealRollEarly = false
 
         withAnimation(.easeInOut(duration: 0.15)) {
             pendingRoll = PendingDiceRoll(
@@ -251,7 +284,7 @@ struct BattleView: View {
             )
         }
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(effectiveRollMs + 500)) {
+        scheduleRollResolve(after: effectiveRollMs + 500) {
             let playerStaminaBefore = player.stamina
             let enemyStaminaBefore  = battle.enemy.stamina
 
@@ -306,17 +339,19 @@ struct BattleView: View {
     }
 
     private func performFlee() {
+        guard !isRolling else { return }
         let d1 = Int.random(in: 1...6)
         let d2 = Int.random(in: 1...6)
 
         AmbientAudio.shared.play(.diceRoll)
         isRolling = true
+        revealRollEarly = false
 
         withAnimation(.easeInOut(duration: 0.15)) {
             pendingRoll = PendingDiceRoll(kind: .luck(dice: (d1, d2)))
         }
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(rollMs + 500)) {
+        scheduleRollResolve(after: rollMs + 500) {
             let playerStaminaBefore = player.stamina
 
             withAnimation(.easeOut(duration: 0.25)) {
@@ -338,17 +373,19 @@ struct BattleView: View {
     }
 
     private func performLuck(offensive: Bool) {
+        guard !isRolling else { return }
         let d1 = Int.random(in: 1...6)
         let d2 = Int.random(in: 1...6)
 
         AmbientAudio.shared.play(.diceRoll)
         isRolling = true
+        revealRollEarly = false
 
         withAnimation(.easeInOut(duration: 0.15)) {
             pendingRoll = PendingDiceRoll(kind: .luck(dice: (d1, d2)))
         }
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(rollMs + 500)) {
+        scheduleRollResolve(after: rollMs + 500) {
             withAnimation(.easeOut(duration: 0.25)) {
                 mutateBattleAndPlayer { c, p in
                     if offensive {
@@ -383,6 +420,30 @@ struct BattleView: View {
                 triggerScreenShake(intensity: 16)  // #6
             }
         }
+    }
+
+    // MARK: - Tap-to-skip helpers
+
+    /// Programme la résolution d'un roll dans `ms` ms via un
+    /// `DispatchWorkItem`. La référence est gardée dans
+    /// `pendingResolveWork` pour qu'un tap sur l'overlay puisse
+    /// court-circuiter l'attente (`skipDiceRoll()`).
+    private func scheduleRollResolve(after ms: Int, _ block: @escaping () -> Void) {
+        let work = DispatchWorkItem(block: block)
+        pendingResolveWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(ms), execute: work)
+    }
+
+    /// Court-circuite l'attente fin-de-roll quand le joueur tape sur les
+    /// dés. On exécute la résolution immédiatement (perform), on annule le
+    /// firing différé (cancel) et on signale à l'overlay de révéler les
+    /// totaux sans attendre.
+    private func skipDiceRoll() {
+        guard isRolling, let work = pendingResolveWork else { return }
+        revealRollEarly = true
+        work.perform()
+        work.cancel()
+        pendingResolveWork = nil
     }
 
     // MARK: - Helpers pour passer @Binding en inout
@@ -439,19 +500,34 @@ struct EnemyCard: View {
             // respirait.
             HStack(spacing: 12) {
                 miniPortrait
-                Text(enemy.name)
-                    .font(Theme.display(16))
-                    .foregroundColor(Theme.parchmentLight)
-                    .multilineTextAlignment(.leading)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(enemy.name)
+                        .font(Theme.display(16))
+                        .foregroundColor(Theme.parchmentLight)
+                        .multilineTextAlignment(.leading)
+                    if let subtitle = enemy.subtitle {
+                        Text(subtitle)
+                            .font(.system(size: 11, weight: .regular, design: .serif))
+                            .italic()
+                            .foregroundColor(Theme.parchmentLight.opacity(0.65))
+                            .multilineTextAlignment(.leading)
+                    }
+                }
                 Spacer(minLength: 0)
             }
 
             HStack(spacing: 22) {
-                stat("Habileté", enemy.skill, Theme.inkBlue.opacity(0.95))
+                // Couleurs plus claires que `Theme.inkBlue` / `Theme.blood`
+                // pour ressortir sur le fond brun-ambré du title card.
+                // Steel blue + corail clair = lisibles instantanément sans
+                // perdre le code couleur SK = bleu / ST = rouge.
+                stat("Habileté", enemy.skill,
+                     Color(red: 0.62, green: 0.78, blue: 1.0))
                 Rectangle()
                     .fill(Theme.oldGold.opacity(0.45))
                     .frame(width: 0.5, height: 22)
-                stat("Endurance", max(enemy.stamina, 0), Theme.blood.opacity(0.95))
+                stat("Endurance", max(enemy.stamina, 0),
+                     Color(red: 1.0, green: 0.55, blue: 0.48))
             }
 
             GeometryReader { geo in
@@ -467,21 +543,26 @@ struct EnemyCard: View {
             .frame(height: 6)
 
             if let note = enemy.abilityNote {
+                // Couleurs claires (corail + bordure or) pour ressortir
+                // sur le fond brun de la carte. L'ancienne combo
+                // `Theme.blood` sur `Theme.blood.opacity(0.20)` rendait
+                // un rouge foncé sur un brun rouge → quasi-illisible.
+                let abilityRed = Color(red: 1.0, green: 0.62, blue: 0.55)
                 HStack(spacing: 5) {
-                    Theme.icon("claw", size: 9, color: Theme.blood)
+                    Theme.icon("claw", size: 9, color: abilityRed)
                     Text(note)
                         .font(Theme.display(10))
                 }
-                .foregroundColor(Theme.blood)
+                .foregroundColor(abilityRed)
                 .padding(.vertical, 4)
                 .padding(.horizontal, 8)
                 .background(
                     RoundedRectangle(cornerRadius: 3, style: .continuous)
-                        .fill(Theme.blood.opacity(0.20))
+                        .fill(Theme.ink.opacity(0.45))
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: 3, style: .continuous)
-                        .stroke(Theme.blood.opacity(0.55), lineWidth: 0.5)
+                        .stroke(abilityRed.opacity(0.75), lineWidth: 0.6)
                 )
             }
 
@@ -493,12 +574,13 @@ struct EnemyCard: View {
         .padding(.vertical, 14)
         .padding(.horizontal, 18)
         .background(
-            // Fond brun-encre chaud (basé sur inkFaded plutôt qu'ink pur)
-            // : on garde l'effet « title card » mais le contenu (texte,
-            // stats) reste lisible — l'ancien `Theme.ink.opacity(0.92)`
-            // était presque noir et écrasait tout ce qu'il portait.
+            // Fond brun ambré chaud : on lit clairement les chiffres
+            // bleus (Habileté) et rouges (Endurance) qui se perdaient
+            // sur l'inkFaded à 0.92 (trop sombre, contraste insuffisant).
+            // Mix custom (un peu plus clair que inkFaded, un peu plus
+            // chaud) qui garde le côté "title card" sans écraser le texte.
             RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .fill(Theme.inkFaded.opacity(0.92))
+                .fill(Color(red: 0.46, green: 0.34, blue: 0.22))
         )
         .overlay(
             // Flash rouge bref quand l'ennemi encaisse, par-dessus le fond.
@@ -716,18 +798,34 @@ struct EnemyCard: View {
 // MARK: - Vue plein écran du portrait
 
 /// Affichée quand le joueur tape le mini-portrait de l'ennemi. Le portrait
-/// est montré à pleine largeur avec le nom et les stats sous l'image, sur
-/// fond sombre. Tap sur l'image ou sur le bouton X pour fermer.
+/// est montré à pleine largeur avec le nom et les stats sous l'image,
+/// sur fond brun chaud (parchemin sombre, plus lisible que le noir pur
+/// pour les chiffres bleus/rouges des stats).
+///
+/// Deux modes :
+/// - `.tapToClose` (défaut) : tap n'importe où pour fermer, hint en bas.
+///   Utilisé par le bestiaire et le mini-portrait pendant le combat.
+/// - `.preCombat(onContinue)` : bouton « Entrer en combat » à la place
+///   du hint. Utilisé comme planche pré-combat (au lieu de l'illustration
+///   simple + bouton « Continuer »).
+enum EnemyPortraitMode {
+    case tapToClose
+    case preCombat(onContinue: () -> Void)
+}
+
 struct EnemyPortraitFullScreen: View {
     let enemy: Enemy
+    var mode: EnemyPortraitMode = .tapToClose
 
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         ZStack {
-            // Fond sombre opaque pour isoler le portrait. Le ignoresSafeArea
-            // évite la barre blanche en haut/bas.
-            Color.black
+            // Fond brun chaud type cuir vieilli plutôt que noir pur : les
+            // chiffres SK (bleu) et ST (rouge) ressortent nettement plus,
+            // et le portrait s'intègre dans l'univers parchemin du jeu
+            // au lieu de flotter sur un void noir d'app système.
+            Color(red: 0.18, green: 0.13, blue: 0.08)
                 .ignoresSafeArea()
 
             VStack(spacing: 14) {
@@ -761,61 +859,80 @@ struct EnemyPortraitFullScreen: View {
                     .padding(.horizontal, 18)
 
                 HStack(spacing: 26) {
-                    stat("Habileté", enemy.skill, Theme.inkBlue.opacity(0.95))
+                    // Couleurs claires (steel blue / corail) au lieu des
+                    // teintes sombres Theme.inkBlue / Theme.blood, pour
+                    // que les chiffres ressortent sur le fond brun.
+                    stat("Habileté", enemy.skill,
+                         Color(red: 0.62, green: 0.78, blue: 1.0))
                     Rectangle()
                         .fill(Theme.oldGold.opacity(0.45))
                         .frame(width: 0.6, height: 22)
-                    stat("Endurance", enemy.staminaMax, Theme.blood.opacity(0.95))
+                    stat("Endurance", enemy.staminaMax,
+                         Color(red: 1.0, green: 0.55, blue: 0.48))
                 }
 
                 if let note = enemy.abilityNote {
+                    // Même chip lisible que sur la EnemyCard : corail clair
+                    // sur fond ink, bordure corail. Ressort sur le brun
+                    // cuir de la vue plein écran.
+                    let abilityRed = Color(red: 1.0, green: 0.62, blue: 0.55)
                     HStack(spacing: 5) {
-                        Theme.icon("claw", size: 11, color: Theme.blood)
+                        Theme.icon("claw", size: 11, color: abilityRed)
                         Text(note)
                             .font(Theme.display(11))
                     }
-                    .foregroundColor(Theme.blood)
+                    .foregroundColor(abilityRed)
                     .padding(.vertical, 5)
                     .padding(.horizontal, 10)
                     .background(
                         RoundedRectangle(cornerRadius: 3, style: .continuous)
-                            .fill(Theme.blood.opacity(0.20))
+                            .fill(Theme.ink.opacity(0.45))
                     )
                     .overlay(
                         RoundedRectangle(cornerRadius: 3, style: .continuous)
-                            .stroke(Theme.blood.opacity(0.55), lineWidth: 0.5)
+                            .stroke(abilityRed.opacity(0.75), lineWidth: 0.6)
                     )
                 }
 
                 Spacer(minLength: 0)
 
-                // Hint discret en bas — la zone entière est tappable mais
-                // on indique quand même la convention.
-                Text("Touche pour fermer")
-                    .font(Theme.display(11))
-                    .tracking(1.5)
-                    .foregroundColor(Theme.parchmentDark.opacity(0.7))
-                    .padding(.bottom, 24)
+                // Pied : hint « touche pour fermer » (mode tapToClose)
+                // OU bouton « Entrer en combat » (mode preCombat).
+                switch mode {
+                case .tapToClose:
+                    Text("Touche pour fermer")
+                        .font(Theme.display(11))
+                        .tracking(1.5)
+                        .foregroundColor(Theme.parchmentDark.opacity(0.85))
+                        .padding(.bottom, 24)
+                case .preCombat(let onContinue):
+                    Button(action: onContinue) {
+                        HStack(spacing: 10) {
+                            Text("Entrer en combat")
+                                .font(Theme.display(14))
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 14, weight: .semibold))
+                        }
+                        .padding(.vertical, 14)
+                        .padding(.horizontal, 32)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(IllustrationContinueStyle())
+                    .padding(.bottom, 32)
+                }
             }
         }
         .contentShape(Rectangle())
         .onTapGesture {
-            dismiss()
-        }
-        // Bouton X en haut-droite pour les utilisateurs qui préfèrent
-        // un point d'action explicite.
-        .overlay(alignment: .topTrailing) {
-            Button {
+            // Tap-to-close uniquement en mode bestiaire/portrait, pas
+            // en pré-combat (sinon un tap accidentel ferait sauter la
+            // planche avant que le joueur ait lu les stats).
+            if case .tapToClose = mode {
                 dismiss()
-            } label: {
-                Image(systemName: "xmark.circle.fill")
-                    .font(.system(size: 28))
-                    .foregroundStyle(Theme.parchmentLight.opacity(0.85), Color.black.opacity(0.6))
             }
-            .padding(.top, 14)
-            .padding(.trailing, 14)
-            .accessibilityLabel("Fermer le portrait")
         }
+        .accessibilityAddTraits(.isButton)
+        .accessibilityLabel("Fermer le portrait")
     }
 
     private func stat(_ label: String, _ value: Int, _ color: Color) -> some View {
@@ -823,7 +940,7 @@ struct EnemyPortraitFullScreen: View {
             Text(label.uppercased())
                 .font(Theme.display(9))
                 .tracking(1.5)
-                .foregroundColor(Theme.parchmentDark)
+                .foregroundColor(Theme.parchmentLight.opacity(0.85))
             Text("\(value)")
                 .font(.system(size: 22, weight: .bold, design: .serif))
                 .foregroundColor(color)
@@ -849,12 +966,18 @@ struct BattleLog: View {
                             // Theme.icon route automatiquement vers les
                             // assets pixel-art (attack, heal_down, tie…)
                             // ou SF Symbol sinon.
-                            Theme.icon(symbol(for: entry.kind),
-                                       size: 13,
+                            // Le coup fatal (`.end`) reçoit un peu plus
+                            // d'emphase visuelle : icône plus grande,
+                            // texte gras et corps légèrement majoré pour
+                            // marquer le moment climax.
+                            Theme.icon(symbol(for: entry),
+                                       size: entry.kind == .end ? 16 : 13,
                                        color: color(for: entry.kind))
                                 .frame(width: 22, alignment: .center)
                             Text(entry.text)
-                                .font(Theme.body(14))
+                                .font(entry.kind == .end
+                                      ? Theme.body(15).bold()
+                                      : Theme.body(14))
                                 .foregroundColor(Theme.ink)
                                 .multilineTextAlignment(.leading)
                                 .lineSpacing(3)
@@ -890,15 +1013,24 @@ struct BattleLog: View {
         )
     }
 
-    private func symbol(for kind: BattleLogEntry.Kind) -> String {
-        switch kind {
+    private func symbol(for entry: BattleLogEntry) -> String {
+        switch entry.kind {
         case .info:     return "info.circle.fill"
         case .hitDealt: return "attack"      // pixel-art : coup porté
         case .hitTaken: return "heal_down"   // pixel-art : on encaisse
         case .miss:     return "tie"         // pixel-art : égalité / parade
-        case .lucky:    return "sparkles"
+        case .lucky:    return "try_luck"    // pixel-art : jet de Chance favorable
         case .unlucky:  return "trap"        // pixel-art : tour défavorable de la Chance
-        case .end:      return "dead"        // pixel-art : monstre abattu (ou défaite côté joueur)
+        case .end:
+            // L'évent final peut être une victoire, une défaite OU une
+            // fuite réussie — toutes partagent le kind `.end`. On
+            // différencie via le texte : « prends la fuite » → flee,
+            // sinon dead (monstre abattu / joueur tombé).
+            let t = entry.text.lowercased()
+            if t.contains("prends la fuite") || t.contains("tu fuis") {
+                return "flee"
+            }
+            return "dead"
         }
     }
 
@@ -934,8 +1066,12 @@ struct BattleActionButton: View {
         Button(action: action) {
             HStack(spacing: 6) {
                 if let icon {
-                    Image(systemName: icon)
-                        .font(.system(size: 13, weight: .semibold))
+                    // Theme.icon route automatiquement vers les PNG du
+                    // bundle (ability, try_luck, flee, etc.) ou retombe
+                    // sur SF Symbol pour le reste (chevron.right…).
+                    // Sans ça, on logguait « No symbol named 'ability' »
+                    // côté UIKit pour chaque clic en combat.
+                    Theme.icon(icon, size: 13, color: Theme.parchmentLight)
                 }
                 Text(label)
                     .font(Theme.display(12))
@@ -965,7 +1101,12 @@ struct BattleButtonStyle: ButtonStyle {
             )
             .scaleEffect(configuration.isPressed ? 0.98 : 1.0)
             .animation(.easeOut(duration: 0.1), value: configuration.isPressed)
-            .playsButtonTap(isPressed: configuration.isPressed)
+            // Pas de `.playsButtonTap` ici : chaque action de combat (Attaquer,
+            // Tenter sa Chance, Tenter de fuir, Utiliser un objet) déclenche
+            // son propre son contextuel — diceRoll au tap, puis hitDealt /
+            // takeHit / lucky / unlucky selon le résultat. Le clic générique
+            // se superposait à diceRoll quasi-simultanément et créait une
+            // bouillie aiguë qui « parasite » plus qu'elle n'aide.
     }
 }
 

@@ -21,7 +21,9 @@ struct BestiaryView: View {
         "forest_wolves",
         "forest_boar",
         "forest_lycanthrope",
+        "forest_lynx",            // optionnel — sentier caché
         "marsh_serpent",
+        "marsh_wraith",           // optionnel — pierres dressées du marais
         "tomb_ghoul",
         "skeleton_guardians",
         "gallery_skeletons",
@@ -91,6 +93,11 @@ private struct BestiaryRow: View {
     let enemyId: String
     let isDefeated: Bool
 
+    /// True quand le joueur a tapé le portrait pour le voir en grand
+    /// (uniquement disponible pour les créatures vaincues — pas question
+    /// de spoiler les silhouettes inconnues).
+    @State private var showFullPortrait: Bool = false
+
     private var enemy: Enemy? { EnemyCatalog.all[enemyId] }
     private var lore: String { EnemyCatalog.lore[enemyId] ?? "" }
 
@@ -104,6 +111,12 @@ private struct BestiaryRow: View {
                     .font(Theme.display(13))
                     .foregroundColor(isDefeated ? Theme.ink : Theme.inkFaded)
                 if isDefeated, let enemy {
+                    if let subtitle = enemy.subtitle {
+                        Text(subtitle)
+                            .font(.system(size: 11, weight: .regular, design: .serif))
+                            .italic()
+                            .foregroundColor(Theme.inkFaded)
+                    }
                     statsLine(enemy: enemy)
                     Text(lore)
                         .font(Theme.body(13))
@@ -133,6 +146,13 @@ private struct BestiaryRow: View {
                         lineWidth: 0.6)
         )
         .opacity(isDefeated ? 1.0 : 0.75)
+        // Tap sur le portrait → grand écran (uniquement pour les vaincus,
+        // sinon on spoilerait les silhouettes encore inconnues).
+        .fullScreenCover(isPresented: $showFullPortrait) {
+            if let enemy {
+                EnemyPortraitFullScreen(enemy: enemy)
+            }
+        }
     }
 
     /// Petit portrait de l'ennemi. Désaturé + teinté parchemin quand vaincu
@@ -153,6 +173,29 @@ private struct BestiaryRow: View {
                 .overlay(
                     RoundedRectangle(cornerRadius: 4, style: .continuous)
                         .stroke(Theme.inkFaded.opacity(0.5), lineWidth: 0.6)
+                )
+                // Badge loupe + tap = vue plein écran. Réservé aux créatures
+                // vaincues : pour les inconnues, le portrait reste silhouette
+                // muette (pas de spoiler).
+                .overlay(alignment: .topTrailing) {
+                    if isDefeated {
+                        Image(systemName: "plus.magnifyingglass")
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundColor(Theme.parchmentLight)
+                            .padding(2)
+                            .background(Circle().fill(Theme.ink.opacity(0.7)))
+                            .offset(x: 4, y: -4)
+                    }
+                }
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    if isDefeated { showFullPortrait = true }
+                }
+                .accessibilityAddTraits(isDefeated ? .isButton : [])
+                .accessibilityLabel(
+                    isDefeated
+                        ? "Voir le portrait de \(enemy?.name ?? "la créature") en grand"
+                        : "Portrait scellé"
                 )
         } else {
             Group {

@@ -93,9 +93,29 @@ struct ContentView: View {
 
             // Planche illustrée pleine page (façon Défis Fantastiques).
             // Cache le passage et les choix tant qu'elle est visible.
+            //
+            // Deux cas :
+            //   1. L'illustration correspond à un ennemi connu → on
+            //      affiche une carte stats-riche (EnemyPortraitFullScreen
+            //      en mode preCombat) : nom, SK/ST, aptitude, dans le
+            //      cadre or sur fond brun cuir. Le joueur sait à quoi il
+            //      a affaire avant de cliquer « Entrer en combat ».
+            //   2. Sinon (scène narrative type Tellor, porte finale) →
+            //      illustration simple + bouton « Continuer ».
             if let illustration = session.pendingIllustration {
-                FullPageIllustration(name: illustration) {
-                    session.dismissIllustration()
+                Group {
+                    if let enemy = EnemyCatalog.all[illustration] {
+                        EnemyPortraitFullScreen(
+                            enemy: enemy,
+                            mode: .preCombat(onContinue: {
+                                session.dismissIllustration()
+                            })
+                        )
+                    } else {
+                        FullPageIllustration(name: illustration) {
+                            session.dismissIllustration()
+                        }
+                    }
                 }
                 .id("illustration-\(illustration)")
                 .transition(.opacity)
@@ -118,6 +138,31 @@ struct ContentView: View {
                         .transition(.opacity)
                 }
             }
+
+            // Transition cinématique de chapitre : fondu noir + titre
+            // plein écran (Chapitre III — Le marais) pendant ~2.5 s
+            // quand on franchit un # chapter:. Zindex max pour passer
+            // par-dessus tout (combat, illustration, vignette critique).
+            if let newChapter = session.pendingChapterTransition {
+                ChapterTransitionOverlay(chapter: newChapter) {
+                    session.pendingChapterTransition = nil
+                }
+                .ignoresSafeArea()
+                .zIndex(50)
+                .transition(.opacity)
+            }
+
+            // Mort cinématique : voile rouge → noir + épitaphe, en
+            // attente de l'écran de fin. Z-index encore plus haut que la
+            // transition de chapitre — la mort prime sur tout.
+            if session.deathCinematicActive {
+                DeathCinematicOverlay {
+                    session.deathCinematicActive = false
+                }
+                .ignoresSafeArea()
+                .zIndex(60)
+                .transition(.opacity)
+            }
         }
         .animation(.easeInOut(duration: 0.35), value: session.hasStarted)
         .animation(.easeInOut(duration: 0.35), value: session.isCreatingCharacter)
@@ -125,20 +170,20 @@ struct ContentView: View {
         .sheet(isPresented: $showingInventory) {
             InventoryView(session: session)
         }
-        .confirmationDialog(
+        .alert(
             "Quitter l'aventure ?",
-            isPresented: $showingMenuConfirm,
-            titleVisibility: .visible
+            isPresented: $showingMenuConfirm
         ) {
-            // `role: .destructive` colore le bouton « Oui » en rouge système
-            // (la couleur destructive iOS) — exactement ce qu'on veut pour
-            // dire « attention, action sortante ».
+            // `.alert` (vs `.confirmationDialog`) rend les deux boutons
+            // côte à côte au lieu de releguer le bouton .cancel dans une
+            // section séparée en bas de feuille. Ainsi « Non » est aussi
+            // visible et tappable que « Oui ».
+            Button("Non", role: .cancel) {}
             Button("Oui", role: .destructive) {
                 withAnimation(.easeInOut(duration: 0.35)) {
                     session.backToMenu()
                 }
             }
-            Button("Non", role: .cancel) {}
         } message: {
             Text("Ta progression sera conservée. Tu pourras la reprendre depuis le menu principal.")
         }
@@ -153,21 +198,59 @@ struct ContentView: View {
                 // seulement les stats vitales et un bouton de sortie. Pas
                 // de bandeau chapitre (il ne change pas pendant un combat
                 // et n'apporte aucune info utile à l'action).
-                CompactBattleHUD(
+                //
+                // Le state change qui présente l'alert est différé d'un
+                // tick runloop (`DispatchQueue.main.async`) : ça laisse
+                // le tap se terminer proprement avant que SwiftUI ne
+                // démarre la présentation. Sans ça, en combat (vue
+                // chargée d'animations + overlays), la présentation
+                // bloquait le main thread ~2 s, faisait grésiller l'audio
+                // et déclenchait un warning « System gesture gate timed out ».
+                // Mode combat : chapter masqué, gold/inventaire masqués,
+                // hit reactions actives, jauge avec preview de dégât
+                // anticipé. Le contexte est libéré au max pour l'action.
+                GameHUD(
                     player: session.player,
-                    onReturnToMenu: { showingMenuConfirm = true }
+                    chapter: nil,
+                    anticipatedDamage: (session.pendingBattle?.enemy.damageBonus).map { 2 + $0 } ?? 0,
+                    showsResourcesAndInventory: false,
+                    isInCombat: true,
+                    consumableCount: 0,
+                    inventoryPulseTrigger: 0,
+                    potionsUsed: session.potionsUsedThisRun,
+                    onOpenInventory: { },
+                    onReturnToMenu: {
+                        DispatchQueue.main.async {
+                            showingMenuConfirm = true
+                        }
+                    }
                 )
                 .padding(.horizontal, 16)
                 .padding(.top, 8)
                 .padding(.bottom, 4)
             } else {
-                StatsHUD(
+                // Mode exploration : chip chapter, gold + inventaire,
+                // pas de réactions de hit (l'aventure est calme par défaut),
+                // pas de damage preview.
+                GameHUD(
                     player: session.player,
-                    audio: audio,
+                    chapter: session.currentChapter,
+                    anticipatedDamage: 0,
+                    showsResourcesAndInventory: true,
+                    isInCombat: false,
                     consumableCount: consumableCount,
                     inventoryPulseTrigger: session.inventoryPulse,
-                    onOpenInventory: { showingInventory = true },
-                    onReturnToMenu: { showingMenuConfirm = true }
+                    potionsUsed: session.potionsUsedThisRun,
+                    onOpenInventory: {
+                        DispatchQueue.main.async {
+                            showingInventory = true
+                        }
+                    },
+                    onReturnToMenu: {
+                        DispatchQueue.main.async {
+                            showingMenuConfirm = true
+                        }
+                    }
                 )
                 .padding(.horizontal, 16)
                 .padding(.top, 8)
@@ -206,10 +289,32 @@ struct ContentView: View {
                                             isComplete: $passageRevealed)
                                     .id("passage-\(visibleText.hashValue)")
                             }
+                            // Ancrage sur le bord intérieur (gauche) : la
+                            // page pivote comme une vraie feuille reliée
+                            // à la tranche, pas comme une carte à jouer
+                            // qui flippe sur son axe central. La
+                            // perspective plus marquée (0.6 au lieu de
+                            // 0.4) accentue la profondeur de la rotation.
                             .rotation3DEffect(.degrees(pageRotation),
                                               axis: (x: 0, y: 1, z: 0),
-                                              anchor: .center,
-                                              perspective: 0.4)
+                                              anchor: .leading,
+                                              perspective: 0.6)
+                            // Ombre douce sur le bord libre (à droite) qui
+                            // s'intensifie au pic de la rotation : simule
+                            // la courbure de la page qui se soulève.
+                            .overlay(alignment: .trailing) {
+                                let intensity = min(1.0, abs(pageRotation) / 90.0)
+                                LinearGradient(
+                                    colors: [
+                                        .clear,
+                                        Theme.ink.opacity(0.25 * intensity)
+                                    ],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                                .frame(width: 80)
+                                .allowsHitTesting(false)
+                            }
                             // Page edge-on → fully invisible, avoids any
                             // ghosting of old text against new.
                             .opacity(abs(pageRotation) > 85 ? 0 : 1)
@@ -328,7 +433,7 @@ struct ContentView: View {
             EndingStatsView(session: session)
             VStack(spacing: 10) {
                 MenuPrimaryButton(label: "Recommencer l'aventure",
-                                  icon: "arrow.counterclockwise") {
+                                  icon: "restart_game") {
                     withAnimation(.easeInOut(duration: 0.35)) {
                         session.restart()
                     }
@@ -364,9 +469,17 @@ struct EndingStatsView: View {
     private var outcomeHeader: some View {
         if let outcome = session.finalOutcome {
             VStack(spacing: 10) {
-                Text("⚜")
-                    .font(.system(size: 18))
-                    .foregroundColor(Theme.oldGold.opacity(0.7))
+                // Pour la mort, on remplace le fleur-de-lys décoratif par
+                // l'asset `epitaph` (logo plus marqué pour signaler une
+                // épitaphe). Les autres fins (honour / destruction / dark /
+                // transcendence) gardent le ⚜ doré.
+                if outcome == .death {
+                    Theme.icon("epitaph", size: 40, color: Theme.ink)
+                } else {
+                    Text("⚜")
+                        .font(.system(size: 18))
+                        .foregroundColor(Theme.oldGold.opacity(0.7))
+                }
                 Text(outcome.title)
                     .font(.system(size: 26, weight: .semibold, design: .serif))
                     .foregroundColor(Theme.ink)
@@ -442,14 +555,15 @@ struct EndingStatsView: View {
                 value: "\(session.battlesWon)")
 
             if session.battlesFled > 0 {
-                row(icon: "figure.run",
+                row(icon: "flee",
                     tint: Theme.inkFaded,
                     label: "Combats fuis",
                     value: "\(session.battlesFled)")
             }
 
             HStack(spacing: 12) {
-                PouchIcon(size: 16, tint: Theme.oldGold).frame(width: 20)
+                Theme.icon("inventory", size: 16, color: Theme.oldGold)
+                    .frame(width: 20)
                 Text("Objets collectés")
                     .font(Theme.body(14))
                     .foregroundColor(Theme.ink)
@@ -481,6 +595,17 @@ struct EndingStatsView: View {
                 tint: Theme.verdigris,
                 label: "Chance restante",
                 value: "\(max(session.player.luck, 0)) / \(session.player.luckMax)")
+
+            // Durée écoulée depuis le premier jet de dés — n'apparaît que
+            // si la save courante contient bien un `runStartedAt` (les
+            // saves d'avant cette feature n'en ont pas, on évite alors un
+            // 0/aberration).
+            if let elapsed = session.runDurationText {
+                row(icon: "info.circle",
+                    tint: Theme.inkFaded,
+                    label: "Temps de jeu",
+                    value: elapsed)
+            }
         }
         .padding(.vertical, 14)
         .padding(.horizontal, 18)
@@ -517,6 +642,10 @@ struct MarginNote: View {
     let message: EventMessage
 
     private var icon: String {
+        // Override explicite (ex. message d'item posé avec `get_items`,
+        // de coût en or avec `coin`, de bonus stat avec `gain_luck` /
+        // `gain_life`) — priorité absolue sur la table par `kind`.
+        if let override = message.iconOverride { return override }
         switch message.kind {
         case .gain:    return "sparkles"
         case .heal:    return "heal_up"      // pixel-art : on récupère de la vie
@@ -541,12 +670,17 @@ struct MarginNote: View {
     }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            // Theme.icon(...) intercepte "heart.fill" pour utiliser l'asset
-            // pixel-art ; les autres SF Symbols passent normalement.
+        HStack(alignment: .center, spacing: 12) {
+            // Centrage vertical de l'icône avec le texte. Avant on était
+            // en `.top` avec un `.padding(.top, 1)` — résultat : sur un
+            // message court tenant sur une ligne (la majorité), le texte
+            // était collé en haut du chip et laissait une marge vide en
+            // dessous (l'icône 20×20 dominait la hauteur de la row).
+            // `.center` aligne le texte au milieu vertical du chip ; les
+            // rares messages multi-lignes restent acceptables avec
+            // l'icône centrée sur le bloc.
             Theme.icon(icon, size: 14, color: tint)
                 .frame(width: 20, height: 20)
-                .padding(.top, 1)
 
             Text(message.text)
                 .font(Theme.body(14))
@@ -823,12 +957,66 @@ struct ChoiceButton: View {
         return false
     }
 
+    /// Nom de l'asset pixel-art à afficher pour un choix normal (non-★).
+    /// Priorité de détection : retour (le plus spécifique) > dialogue >
+    /// classique. L'ordre matters parce que par exemple « Revenir parler à
+    /// la veuve » serait classé en retour, pas en dialogue.
+    private var choiceIconName: String {
+        if isReturn { return "return_option" }
+        if isDialogue { return "dialogue_option" }
+        return "classic_option"
+    }
+
+    /// Détection heuristique : le choix invite-t-il à un dialogue ?
+    /// On regarde si le texte commence par un verbe de parole — couvre la
+    /// quasi-totalité des PNJ du jeu sans avoir à étiqueter chaque option
+    /// dans le `.ink`. Les options spéciales (★) gardent leur losange or.
+    private var isDialogue: Bool {
+        guard !choice.isSpecial else { return false }
+        let trimmed = choice.text.trimmingCharacters(in: .whitespaces).lowercased()
+        let dialogueOpeners = [
+            "saluer", "parler", "demander", "discuter", "interroger",
+            "répondre", "lui demander", "lui parler", "lui glisser",
+            "le saluer", "la saluer", "lui dire",
+            "lui offrir une pièce", "le remercier", "le supplier",
+            "murmurer", "écouter"
+        ]
+        return dialogueOpeners.contains { trimmed.hasPrefix($0) }
+    }
+
+    /// Détection heuristique : le choix mène-t-il à un retour vers un hub
+    /// (place du village, ruelles, clairière, carrefour…) ? Verbes types :
+    /// « Retour / Revenir / Remonter / Reprendre la piste / Repartir ».
+    private var isReturn: Bool {
+        guard !choice.isSpecial else { return false }
+        let trimmed = choice.text.trimmingCharacters(in: .whitespaces).lowercased()
+        let returnOpeners = [
+            "retour", "revenir", "remonter", "remonte",
+            "reprendre la piste", "reprendre les ruelles",
+            "repartir", "retourner", "retourne",
+            "te ressaisir", "te recueillir",
+            "souffler un coup", "redescendre"
+        ]
+        return returnOpeners.contains { trimmed.hasPrefix($0) }
+    }
+
     var body: some View {
         Button(action: { if !isUnaffordable { action() } }) {
             HStack(alignment: .firstTextBaseline, spacing: 12) {
-                Text(choice.isSpecial ? "❖" : "✦")
-                    .font(.system(size: 14, weight: choice.isSpecial ? .semibold : .regular))
-                    .foregroundColor(Theme.oldGold)
+                if choice.isSpecial {
+                    // Option spéciale (★ dans le .ink) — asset pixel-art
+                    // `item_option` (clé / parchemin). Signale les chemins
+                    // débloqués par un item ramassé ailleurs.
+                    Theme.icon("item_option", size: 14, color: Theme.oldGold)
+                } else {
+                    // Choix normal : asset pixel-art selon le type d'action.
+                    //   - retour vers un hub → return_option
+                    //   - dialogue → dialogue_option
+                    //   - autre → classic_option
+                    Theme.icon(choiceIconName,
+                               size: 14,
+                               color: Theme.oldGold)
+                }
                 Text(choice.text)
                     .font(Theme.body(16))
                     .foregroundColor(Theme.ink)
@@ -889,47 +1077,245 @@ struct ChoiceButtonStyle: ButtonStyle {
     }
 }
 
-// MARK: - HUD des statistiques
+// MARK: - HUD du jeu (unifié exploration + combat)
 
-struct StatsHUD: View {
+/// Barre de statut unique qui couvre les deux contextes :
+///   - **Exploration** : chip chapitre + stats + or + inventaire + menu.
+///     `chapter` non-nil, `showsResourcesAndInventory` true, `isInCombat`
+///     false, `anticipatedDamage` 0.
+///   - **Combat** : stats + menu uniquement, jauge avec dégât anticipé,
+///     réactions de hit (flash, shake, particules, floater). `chapter` nil
+///     (le combat est intemporel, le chapitre est masqué pour libérer de
+///     la place), `showsResourcesAndInventory` false, `isInCombat` true.
+///
+/// L'ancien duo `StatsHUD` + `CompactBattleHUD` dupliquait stats, fleurons,
+/// menu button, jauge. Un seul struct = une seule source de vérité visuelle.
+struct GameHUD: View {
     let player: PlayerState
-    @ObservedObject var audio: AmbientAudio
-    /// Compteur de consommables actuellement dans le sac (potions, herbes,
-    /// viande). Affiché en badge sur le bouton inventaire.
+    /// Si fourni → chip chapitre au-dessus du HUD. Nil → pas de chip
+    /// (utilisé en combat).
+    let chapter: Chapter?
+    /// Dégât que l'ennemi infligerait sur un hit ce round (2 + damageBonus).
+    /// 0 = pas de preview (hors combat).
+    let anticipatedDamage: Int
+    /// Si true, affiche le compteur d'or + le bouton inventaire. Désactivé
+    /// en combat (pas d'achat en pleine baston, et pour l'inventaire un
+    /// bouton dédié vit dans la BattleView).
+    let showsResourcesAndInventory: Bool
+    /// Active les réactions visuelles d'encaissement : flash rouge, shake,
+    /// particules, floating damage à droite. Hors combat les changements
+    /// d'Endurance restent visibles via le +N/-N de `StatBadge`, mais
+    /// pas de feedback "visceral" — l'exploration est calme par nature.
+    let isInCombat: Bool
     let consumableCount: Int
-    /// Trigger qui s'incrémente à chaque pickup de consommable — déclenche
-    /// la pulsation du bouton inventaire pour signaler "il y a un truc neuf
-    /// à boire".
     let inventoryPulseTrigger: Int
+    /// Nombre de potions utilisées dans la run. Affiché en chip discret à
+    /// côté du chip chapitre, surtout utile pour les joueurs visant le
+    /// succès « Iron-man » (0 potion) — ils gardent un œil sur leur compteur.
+    let potionsUsed: Int
     let onOpenInventory: () -> Void
     let onReturnToMenu: () -> Void
 
+    // États transitoires des réactions de hit. Inertes hors combat.
+    @State private var lastStamina: Int = -1
+    @State private var staminaFloater: StaminaFloater? = nil
+    @State private var hitFlash: Bool = false
+    @State private var hitShakeOffset: CGFloat = 0
+    @State private var hitParticleTrigger: UUID = UUID()
+    @State private var showHitParticles: Bool = false
+
+    private var staminaRatio: Double {
+        guard player.staminaMax > 0 else { return 0 }
+        return Swift.min(1.0, Double(Swift.max(player.stamina, 0)) / Double(player.staminaMax))
+    }
+
+    /// Ratio de la zone « à risque » sur la jauge : du point
+    /// `(stamina − anticipatedDamage)` jusqu'au point `stamina`. Si la
+    /// stamina actuelle est inférieure ou égale au dégât anticipé, la
+    /// zone à risque couvre toute la portion remplie (= le prochain coup
+    /// peut tuer).
+    private var dangerStartRatio: Double {
+        guard player.staminaMax > 0, anticipatedDamage > 0 else { return staminaRatio }
+        let dangerStart = max(0, player.stamina - anticipatedDamage)
+        return Double(dangerStart) / Double(player.staminaMax)
+    }
+
     var body: some View {
+        VStack(spacing: 4) {
+            if let chapter {
+                HStack(spacing: 8) {
+                    chapterChip(chapter)
+                    Spacer(minLength: 0)
+                    potionsChip
+                }
+            }
+            statsCard
+                .background(
+                    RoundedRectangle(cornerRadius: 5, style: .continuous)
+                        .fill(Theme.blood.opacity(hitFlash ? 0.18 : 0))
+                )
+                .offset(x: hitShakeOffset)
+                .overlay(alignment: .topTrailing) {
+                    if let floater = staminaFloater {
+                        FloatingDamage(value: floater.value)
+                            .id(floater.id)
+                            .padding(.trailing, 60)
+                            .padding(.top, 8)
+                    }
+                }
+                .overlay(alignment: .center) {
+                    if showHitParticles {
+                        HitParticles(tint: Theme.blood)
+                            .id(hitParticleTrigger)
+                            .offset(y: 16)
+                    }
+                }
+        }
+        .onAppear { lastStamina = player.stamina }
+        .onChange(of: player.stamina) { oldValue, newValue in
+            // Réactions de hit uniquement en combat — en exploration, le
+            // +/-N de StatBadge suffit (un coup de vapeur toxique dans la
+            // crypte ne mérite pas un shake d'écran).
+            guard isInCombat else { return }
+            let delta = newValue - oldValue
+            if delta < 0 {
+                triggerHit()
+                hitParticleTrigger = UUID()
+                showHitParticles = true
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    showHitParticles = false
+                }
+            }
+            if delta != 0 {
+                staminaFloater = StaminaFloater(value: delta)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                    if staminaFloater?.value == delta {
+                        staminaFloater = nil
+                    }
+                }
+            }
+            lastStamina = newValue
+        }
+    }
+
+    /// Chip chapitre — petit fleuron + nom court + fleuron, en small caps
+    /// dorées au-dessus du cadre du HUD. Subtil mais toujours présent.
+    private func chapterChip(_ chapter: Chapter) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "diamond.fill")
+                .font(.system(size: 5))
+                .foregroundColor(Theme.oldGold.opacity(0.7))
+            Text(chapter.shortTitle.uppercased())
+                .font(Theme.display(10))
+                .tracking(1.8)
+                .foregroundColor(Theme.oldGold)
+                .shadow(color: Theme.ink.opacity(0.5), radius: 2, x: 0, y: 1)
+            Image(systemName: "diamond.fill")
+                .font(.system(size: 5))
+                .foregroundColor(Theme.oldGold.opacity(0.7))
+        }
+    }
+
+    /// Mini-compteur de potions utilisées dans la run. Discret, en marge
+    /// droite de la rangée chapitre. Aide les joueurs visant l'Iron-man
+    /// (0 potion) à savoir où ils en sont sans avoir à fouiller dans des
+    /// stats. Couleur verdâtre quand encore à 0 (pur), grise sinon.
+    private var potionsChip: some View {
         HStack(spacing: 4) {
-            StatBadge(icon: "ability",
-                      value: player.skill, max: player.skillMax,
-                      color: Theme.inkBlue,
-                      criticalThreshold: nil,
-                      accessibility: "Habileté")
-            fleuronDivider
-            StatBadge(icon: "life",
-                      value: player.stamina, max: player.staminaMax,
-                      color: Theme.blood,
-                      criticalThreshold: max(1, player.staminaMax / 4),
-                      accessibility: "Endurance")
-            fleuronDivider
-            StatBadge(icon: "luck",
-                      value: player.luck, max: player.luckMax,
-                      color: Theme.verdigris,
-                      criticalThreshold: 3,
-                      accessibility: "Chance")
-            Spacer(minLength: 4)
-            goldResource
-            inventoryButton
-            audioToggle
-            menuButton
+            Theme.icon("green_potion",
+                       size: 10,
+                       color: potionsUsed == 0 ? Theme.verdigris : Theme.inkFaded)
+            Text("\(potionsUsed)")
+                .font(.system(size: 10, weight: .semibold, design: .serif))
+                .foregroundColor(potionsUsed == 0 ? Theme.verdigris : Theme.inkFaded)
+                .monospacedDigit()
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(potionsUsed) potion\(potionsUsed > 1 ? "s" : "") utilisée\(potionsUsed > 1 ? "s" : "")")
+    }
+
+    private var statsCard: some View {
+        VStack(spacing: 6) {
+            HStack(spacing: 4) {
+                StatBadge(icon: "ability",
+                          value: player.skill, max: player.skillMax,
+                          color: Theme.inkBlue,
+                          criticalThreshold: nil,
+                          accessibility: "Habileté",
+                          showsMax: false)
+                fleuronDivider
+                StatBadge(icon: "life",
+                          value: player.stamina, max: player.staminaMax,
+                          color: Theme.blood,
+                          criticalThreshold: max(1, player.staminaMax / 4),
+                          accessibility: "Endurance")
+                fleuronDivider
+                StatBadge(icon: "luck",
+                          value: player.luck, max: player.luckMax,
+                          color: Theme.verdigris,
+                          criticalThreshold: 3,
+                          accessibility: "Chance")
+                Spacer(minLength: 4)
+                if showsResourcesAndInventory {
+                    actionGroupSeparator
+                    goldResource
+                    actionGroupSeparator
+                    inventoryButton
+                }
+                menuButton
+            }
+            // Jauge d'Endurance — 3 couches :
+            //   1. track parchemin foncé
+            //   2. Endurance courante (rouge)
+            //   3. Zone "à risque" du round courant (ink sombre par-dessus
+            //      le rouge), uniquement quand `anticipatedDamage > 0`.
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(Theme.parchmentDark.opacity(0.5))
+                    Capsule()
+                        .fill(Theme.blood.opacity(0.85))
+                        .frame(width: geo.size.width * staminaRatio)
+                        .animation(.easeOut(duration: 0.5), value: staminaRatio)
+                    if anticipatedDamage > 0 && player.stamina > 0 {
+                        Capsule()
+                            .fill(Theme.ink.opacity(0.55))
+                            .frame(width: geo.size.width * (staminaRatio - dangerStartRatio))
+                            .offset(x: geo.size.width * dangerStartRatio)
+                            .animation(.easeOut(duration: 0.5), value: dangerStartRatio)
+                    }
+                }
+            }
+            .frame(height: isInCombat ? 5 : 4)
         }
         .ornamentedHudFrame()
+    }
+
+    /// Flash + shake quand le joueur encaisse (combat uniquement).
+    private func triggerHit() {
+        withAnimation(.easeOut(duration: 0.12)) { hitFlash = true }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
+            withAnimation(.easeIn(duration: 0.25)) { hitFlash = false }
+        }
+        let amplitudes: [(CGFloat, Double)] = [
+            (-8, 0.05), (8, 0.05),
+            (-5, 0.05), (5, 0.05),
+            (0,  0.05)
+        ]
+        var delay: Double = 0
+        for (amp, dur) in amplitudes {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                withAnimation(.easeInOut(duration: dur)) { hitShakeOffset = amp }
+            }
+            delay += dur
+        }
+    }
+
+    private var actionGroupSeparator: some View {
+        Rectangle()
+            .fill(Theme.inkFaded.opacity(0.35))
+            .frame(width: 0.6, height: 18)
+            .padding(.horizontal, 4)
     }
 
     private var menuButton: some View {
@@ -959,299 +1345,7 @@ struct StatsHUD: View {
         )
     }
 
-    private var audioToggle: some View {
-        // `isPlaying` ne reflète que le drone d'ambiance. On préfère regarder
-        // les deux préférences (ambiance + effets) pour que l'icône soit
-        // cohérente avec ce que le bouton fait — couper TOUT.
-        let anyAudio = audio.ambientEnabled || audio.effectsEnabled
-        return Button {
-            audio.toggle()
-        } label: {
-            Group {
-                if anyAudio {
-                    // Asset pixel-art custom quand le son est actif.
-                    Theme.icon("sound", size: 13, color: Theme.parchmentLight)
-                } else {
-                    // Couper le son : SF Symbol explicite (haut-parleur
-                    // barré). On garde le système pour le différencier
-                    // visuellement du PNG actif sans avoir besoin d'un
-                    // deuxième asset "sound off".
-                    Image(systemName: "speaker.slash.fill")
-                        .font(.system(size: 13))
-                }
-            }
-            .frame(width: 28, height: 28)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(HudIconButtonStyle(isActive: anyAudio))
-        .accessibilityLabel(anyAudio ? "Couper le son" : "Réactiver le son")
-    }
-
-    /// Petit fleuron servant de séparateur entre les badges de stats. Plus
-    /// "grimoire" qu'un trait vertical : un losange filiforme avec une fine
-    /// barre verticale traversante, suggérant un repère de copiste.
-    private var fleuronDivider: some View {
-        VStack(spacing: 2) {
-            Text("◆")
-                .font(.system(size: 6))
-                .foregroundColor(Theme.inkFaded.opacity(0.55))
-        }
-        .frame(width: 10)
-    }
-
-}
-
-// MARK: - HUD compact pour le mode combat
-
-/// Version dégraissée du HUD utilisée uniquement pendant un combat.
-/// Ne montre que les 3 stats vitales (Habileté, Endurance, Chance) et
-/// un bouton "maison" pour sortir vers le menu. Les ressources et boutons
-/// qui n'ont pas d'usage en combat (or, audio, inventaire) sont masqués
-/// pour libérer de la place à l'action.
-/// Vignette rouge sang qui pulse sur les bords de l'écran quand le joueur
-/// passe sous 25% d'Endurance en combat. Stress visuel immédiat sans
-/// masquer le contenu central.
-struct CriticalHealthVignette: View {
-    @State private var pulse: Bool = false
-
-    var body: some View {
-        RadialGradient(
-            colors: [
-                .clear,
-                Theme.blood.opacity(pulse ? 0.40 : 0.20)
-            ],
-            center: .center,
-            startRadius: 220,
-            endRadius: 520
-        )
-        .blendMode(.multiply)
-        .onAppear {
-            withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
-                pulse = true
-            }
-        }
-    }
-}
-
-/// Marqueur ±N qui monte et s'éteint sur une jauge quand stamina varie.
-/// Utilisé à la fois sur le HUD joueur et la carte d'ennemi pour donner
-/// un retour visuel viscéral aux coups.
-struct StaminaFloater: Equatable {
-    let value: Int
-    let id = UUID()
-}
-
-/// Petite gerbe de particules qui jaillissent depuis un point quand on
-/// reçoit un coup. ~5 éclats projetés perpendiculairement avec un offset
-/// random + fade en ~450 ms. Une fois disparus, la view se rend
-/// transparente — à instancier avec un `.id()` qui change pour rejouer.
-struct HitParticles: View {
-    /// Teinte des éclats. Rouge sang pour dégât, doré pour effet bénéfique.
-    var tint: Color = Theme.blood
-
-    @State private var progress: CGFloat = 0
-    private let count = 5
-    private let amplitudes: [CGSize]
-
-    init(tint: Color = Theme.blood, seed: Int = 0) {
-        self.tint = tint
-        var rng = SystemRandomNumberGenerator()
-        let amps: [CGSize] = (0..<5).map { _ in
-            let dx = CGFloat(Int.random(in: -22...22, using: &rng))
-            let dy = CGFloat(Int.random(in: -20...4, using: &rng))
-            return CGSize(width: dx, height: dy)
-        }
-        self.amplitudes = amps
-    }
-
-    var body: some View {
-        ZStack {
-            ForEach(0..<count, id: \.self) { idx in
-                Circle()
-                    .fill(tint.opacity(0.85))
-                    .frame(width: 4, height: 4)
-                    .offset(
-                        x: amplitudes[idx].width * progress,
-                        y: amplitudes[idx].height * progress
-                    )
-                    .opacity(1.0 - Double(progress))
-            }
-        }
-        .allowsHitTesting(false)
-        .onAppear {
-            withAnimation(.easeOut(duration: 0.45)) {
-                progress = 1
-            }
-        }
-    }
-}
-
-/// Texte flottant qui apparaît puis monte de quelques points en perdant
-/// son opacité. Auto-disparition après ~900 ms.
-struct FloatingDamage: View {
-    let value: Int
-
-    @State private var offsetY: CGFloat = 0
-    @State private var opacity: Double = 1
-
-    private var tint: Color {
-        value < 0 ? Theme.blood : Theme.verdigris
-    }
-
-    var body: some View {
-        Text(value > 0 ? "+\(value)" : "\(value)")
-            .font(.system(size: 18, weight: .bold, design: .serif))
-            .foregroundColor(tint)
-            .shadow(color: Theme.parchmentLight, radius: 1)
-            .monospacedDigit()
-            .opacity(opacity)
-            .offset(y: offsetY)
-            .onAppear {
-                withAnimation(.easeOut(duration: 0.9)) {
-                    offsetY = -28
-                    opacity = 0
-                }
-            }
-            .allowsHitTesting(false)
-    }
-}
-
-struct CompactBattleHUD: View {
-    let player: PlayerState
-    let onReturnToMenu: () -> Void
-
-    /// Dernière Endurance observée — sert à calculer le delta pour afficher
-    /// un chiffre flottant ±N quand stamina change.
-    @State private var lastStamina: Int = -1
-    /// Floater actif : la valeur (>0 = soin, <0 = dégât) et un id pour
-    /// forcer la recréation de la vue à chaque trigger.
-    @State private var staminaFloater: StaminaFloater? = nil
-    /// Flash rouge bref + offset horizontal quand on encaisse — même
-    /// langage visuel que l'EnemyCard côté ennemi.
-    @State private var hitFlash: Bool = false
-    @State private var hitShakeOffset: CGFloat = 0
-    /// Trigger pour rejouer la gerbe de particules à chaque hit. `.id()`
-    /// lié à cette valeur force la recréation de la HitParticles view.
-    @State private var hitParticleTrigger: UUID = UUID()
-    @State private var showHitParticles: Bool = false
-
-    private var staminaRatio: Double {
-        guard player.staminaMax > 0 else { return 0 }
-        return Double(max(player.stamina, 0)) / Double(player.staminaMax)
-    }
-
-    var body: some View {
-        VStack(spacing: 6) {
-            HStack(spacing: 6) {
-                StatBadge(icon: "ability",
-                          value: player.skill, max: player.skillMax,
-                          color: Theme.inkBlue,
-                          criticalThreshold: nil,
-                          accessibility: "Habileté")
-                fleuronDivider
-                StatBadge(icon: "life",
-                          value: player.stamina, max: player.staminaMax,
-                          color: Theme.blood,
-                          criticalThreshold: max(1, player.staminaMax / 4),
-                          accessibility: "Endurance")
-                fleuronDivider
-                StatBadge(icon: "luck",
-                          value: player.luck, max: player.luckMax,
-                          color: Theme.verdigris,
-                          criticalThreshold: 3,
-                          accessibility: "Chance")
-                Spacer(minLength: 4)
-                Button(action: onReturnToMenu) {
-                    Theme.icon("menu", size: 13, color: Theme.parchmentLight)
-                        .frame(width: 28, height: 28)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(HudIconButtonStyle(isActive: true))
-                .accessibilityLabel("Retour au menu principal")
-            }
-            // Jauge d'Endurance — même langage visuel que l'EnemyCard, pour
-            // qu'on lise d'un coup d'œil les deux barres face à face.
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    Capsule()
-                        .fill(Theme.parchmentDark.opacity(0.5))
-                    Capsule()
-                        .fill(Theme.blood.opacity(0.85))
-                        .frame(width: geo.size.width * staminaRatio)
-                        .animation(.easeOut(duration: 0.5), value: staminaRatio)
-                }
-            }
-            .frame(height: 5)
-        }
-        .ornamentedHudFrame()
-        .background(
-            RoundedRectangle(cornerRadius: 5, style: .continuous)
-                .fill(Theme.blood.opacity(hitFlash ? 0.18 : 0))
-        )
-        .offset(x: hitShakeOffset)
-        .overlay(alignment: .topTrailing) {
-            if let floater = staminaFloater {
-                FloatingDamage(value: floater.value)
-                    .id(floater.id)
-                    .padding(.trailing, 60)
-                    .padding(.top, 8)
-            }
-        }
-        .overlay(alignment: .center) {
-            if showHitParticles {
-                HitParticles(tint: Theme.blood)
-                    .id(hitParticleTrigger)
-                    .offset(y: 16)  // au niveau de la jauge
-            }
-        }
-        .onAppear { lastStamina = player.stamina }
-        .onChange(of: player.stamina) { oldValue, newValue in
-            let delta = newValue - oldValue
-            if delta < 0 {
-                triggerHit()
-                hitParticleTrigger = UUID()
-                showHitParticles = true
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                    showHitParticles = false
-                }
-            }
-            if delta != 0 {
-                staminaFloater = StaminaFloater(value: delta)
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                    if staminaFloater?.value == delta {
-                        staminaFloater = nil
-                    }
-                }
-            }
-            lastStamina = newValue
-        }
-    }
-
-    /// Réplique de la logique `EnemyCard.triggerHit()` pour le HUD joueur :
-    /// flash rouge bref + shake horizontal sec. Visuel cohérent des deux
-    /// côtés de l'écran (le joueur encaisse comme l'ennemi encaisse).
-    private func triggerHit() {
-        withAnimation(.easeOut(duration: 0.12)) { hitFlash = true }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
-            withAnimation(.easeIn(duration: 0.25)) { hitFlash = false }
-        }
-        let amplitudes: [(CGFloat, Double)] = [
-            (-8, 0.05), (8, 0.05),
-            (-5, 0.05), (5, 0.05),
-            (0,  0.05)
-        ]
-        var delay: Double = 0
-        for (amp, dur) in amplitudes {
-            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-                withAnimation(.easeInOut(duration: dur)) { hitShakeOffset = amp }
-            }
-            delay += dur
-        }
-    }
-
-    /// Petit fleuron servant de séparateur entre les badges de stats. Plus
-    /// "grimoire" qu'un trait vertical : un losange filiforme avec une fine
-    /// barre verticale traversante, suggérant un repère de copiste.
+    /// Petit fleuron servant de séparateur entre les badges de stats.
     private var fleuronDivider: some View {
         VStack(spacing: 2) {
             Text("◆")
@@ -1262,58 +1356,19 @@ struct CompactBattleHUD: View {
     }
 }
 
-// MARK: - Une stat du HUD (icône + valeur, avec pulsation si critique)
+// MARK: - Overlays + utilities extraits
+//
+// `ChapterTransitionOverlay`, `DeathCinematicOverlay`, `CriticalHealthVignette`,
+// `StaminaFloater`, `HitParticles`, `FloatingDamage` ont été déplacés dans
+// `tomb/Views/Overlays.swift` pour alléger ce fichier. Voir là-bas.
+//
+// `CompactBattleHUD` et `StatsHUD` ont été fusionnés en `GameHUD` (plus
+// haut dans ce fichier) — un seul struct paramétré par contexte
+// (exploration/combat) pour éviter la duplication et garantir qu'une
+// modif visuelle se propage partout.
 
-struct StatBadge: View {
-    let icon: String
-    let value: Int
-    let max: Int
-    let color: Color
-    /// Si la valeur descend à ce seuil (ou en dessous), la stat pulse pour
-    /// alerter le joueur. `nil` = pas d'alerte (ex. Habileté).
-    let criticalThreshold: Int?
-    let accessibility: String
-
-    @State private var pulse: Bool = false
-
-    private var isCritical: Bool {
-        guard let threshold = criticalThreshold else { return false }
-        return value <= threshold && value > 0
-    }
-
-    var body: some View {
-        VStack(spacing: 2) {
-            StatGlyph(icon: icon, color: color.opacity(0.75), size: 11)
-            HStack(alignment: .firstTextBaseline, spacing: 2) {
-                Text("\(value)")
-                    .font(.system(size: 16, weight: .bold, design: .serif))
-                    .foregroundColor(color)
-                Text("/\(max)")
-                    .font(.system(size: 10, weight: .regular, design: .serif))
-                    .foregroundColor(Theme.inkFaded)
-            }
-        }
-        .frame(minWidth: 38)
-        .opacity(isCritical && pulse ? 0.55 : 1.0)
-        .scaleEffect(isCritical && pulse ? 0.96 : 1.0)
-        .onAppear { syncPulse() }
-        .onChange(of: isCritical) { _, _ in syncPulse() }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(accessibility) \(value) sur \(max)")
-    }
-
-    private func syncPulse() {
-        if isCritical {
-            withAnimation(.easeInOut(duration: 0.7).repeatForever(autoreverses: true)) {
-                pulse = true
-            }
-        } else {
-            withAnimation(.easeInOut(duration: 0.2)) {
-                pulse = false
-            }
-        }
-    }
-}
+// `StatBadge`, `StatTooltipKind` et `StatTooltipCard` ont été extraits
+// dans `tomb/Views/StatBadgeView.swift`.
 
 // MARK: - Bouton inventaire avec badge + pulse
 
@@ -1433,436 +1488,9 @@ struct HudIconButtonStyle: ButtonStyle {
     }
 }
 
-// MARK: - Inventaire (sheet)
+// `InventoryView`, `ResourceCard`, `PouchIcon`, `CoinIcon`, `InventoryRow`
+// ont été extraits dans `tomb/Views/InventoryView.swift`.
 
-struct InventoryView: View {
-    @ObservedObject var session: GameSession
-    @Environment(\.dismiss) private var dismiss
-
-    /// Phrase courte expliquant pourquoi un consommable est inutilisable
-    /// dans l'état actuel — affichée sous le bouton grisé.
-    private func consumableWasteReason(for effect: ConsumableEffect) -> String {
-        switch effect {
-        case .heal:        return "Endurance déjà au maximum"
-        case .restoreLuck: return "Chance déjà au maximum"
-        case .boostSkillNextAttack, .weakenEnemyNextAttack:
-            return "À utiliser pendant un combat"
-        }
-    }
-
-    var body: some View {
-        NavigationStack {
-            ZStack {
-                Theme.pageBackground
-                ScrollView {
-                    VStack(spacing: 16) {
-                        ResourceCard(gold: session.player.gold)
-                        if session.player.items.isEmpty {
-                            emptyState
-                        } else {
-                            VStack(spacing: 12) {
-                                ForEach(Array(session.player.items).sorted(), id: \.self) { itemId in
-                                    let info = ItemCatalog.all[itemId]
-                                    let isWeapon = info?.weapon != nil
-                                    let isEquipped = session.player.equippedWeapon == itemId
-                                    // Un consommable n'est proposable que s'il aurait
-                                    // un effet réel (pas un soin à PV pleins, pas de
-                                    // restore de Chance déjà au max).
-                                    let useful = info?.consumable.map(session.isUseful(effect:)) ?? false
-                                    InventoryRow(
-                                        itemId: itemId,
-                                        isEquipped: isEquipped,
-                                        useDisabledReason: (info?.consumable != nil && !useful)
-                                            ? consumableWasteReason(for: info!.consumable!)
-                                            : nil,
-                                        onUse: useful
-                                            ? { session.useItem(itemId) }
-                                            : nil,
-                                        onEquip: (isWeapon && !isEquipped)
-                                            ? { session.equipWeapon(itemId) }
-                                            : nil,
-                                        onUnequip: (isWeapon && isEquipped)
-                                            ? { session.unequipWeapon() }
-                                            : nil
-                                    )
-                                }
-                            }
-                        }
-                    }
-                    .padding(20)
-                }
-            }
-            .navigationTitle("Inventaire")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Fermer") { dismiss() }
-                        .foregroundColor(Theme.ink)
-                }
-            }
-        }
-    }
-
-    private var emptyState: some View {
-        VStack(spacing: 12) {
-            Theme.icon("inventory", size: 28, color: Theme.inkFaded.opacity(0.6))
-            Text("Ton sac est vide pour l'instant.")
-                .font(Theme.body(14))
-                .italic()
-                .foregroundColor(Theme.inkFaded)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.top, 40)
-        .padding(.bottom, 20)
-    }
-}
-
-/// Petite carte "Or" en tête d'inventaire. L'or apparaît déjà dans le HUD
-/// mais reste affiché ici pour rester visible quand le sac est ouvert.
-struct ResourceCard: View {
-    let gold: Int
-
-    var body: some View {
-        HStack(spacing: 10) {
-            CoinIcon(size: 18)
-            Text("\(gold)")
-                .font(.system(size: 22, weight: .bold, design: .serif))
-                .foregroundColor(Theme.ink)
-                .monospacedDigit()
-            Text("pièce\(gold > 1 ? "s" : "") d'or")
-                .font(Theme.display(11))
-                .foregroundColor(Theme.inkFaded)
-            Spacer(minLength: 0)
-        }
-        .padding(.vertical, 12)
-        .padding(.horizontal, 16)
-        .frame(maxWidth: .infinity)
-        .background(
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .fill(Theme.parchmentLight.opacity(0.55))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .stroke(Theme.inkFaded.opacity(0.45), lineWidth: 0.8)
-        )
-    }
-}
-
-/// Bourse à cordons : silhouette de pochette en cuir resserrée par une
-/// ficelle, façon "bourse d'or" d'aventurier. Pas de SF Symbol équivalent,
-/// donc on la dessine à la main. Utilisée comme icône d'inventaire dans
-/// le HUD et dans le récap de fin de partie.
-struct PouchIcon: View {
-    var size: CGFloat = 14
-    var tint: Color = Theme.ink
-
-    var body: some View {
-        Canvas { ctx, _ in
-            let w = size
-            let h = size
-            // Bordure / corps : forme arrondie qui s'évase vers le bas,
-            // resserrée en haut comme une bourse fermée. Construite à la
-            // main avec deux courbes de Bézier symétriques.
-            let body = Path { p in
-                let neckLeft  = CGPoint(x: w * 0.32, y: h * 0.32)
-                let neckRight = CGPoint(x: w * 0.68, y: h * 0.32)
-                let leftBelly = CGPoint(x: w * 0.05, y: h * 0.70)
-                let bottom    = CGPoint(x: w * 0.50, y: h * 0.98)
-                let rightBelly = CGPoint(x: w * 0.95, y: h * 0.70)
-
-                p.move(to: neckLeft)
-                p.addQuadCurve(to: leftBelly,
-                               control: CGPoint(x: w * 0.02, y: h * 0.45))
-                p.addQuadCurve(to: bottom,
-                               control: CGPoint(x: w * 0.05, y: h * 1.02))
-                p.addQuadCurve(to: rightBelly,
-                               control: CGPoint(x: w * 0.95, y: h * 1.02))
-                p.addQuadCurve(to: neckRight,
-                               control: CGPoint(x: w * 0.98, y: h * 0.45))
-                p.closeSubpath()
-            }
-            ctx.fill(body, with: .color(tint))
-
-            // Cordon : trait horizontal traversant le col, avec deux petits
-            // brins qui retombent. Inscrit en couleur "encre" plus claire
-            // pour rester lisible sur la pochette.
-            let stringColor = tint.opacity(0.55)
-            let stringWidth = max(0.8, w * 0.08)
-            let neckY = h * 0.30
-            let cord = Path { p in
-                p.move(to: CGPoint(x: w * 0.22, y: neckY))
-                p.addLine(to: CGPoint(x: w * 0.78, y: neckY))
-            }
-            ctx.stroke(cord, with: .color(stringColor), lineWidth: stringWidth)
-
-            // Deux petits brins qui pendent du nœud central, pour
-            // l'identification "ficelle". Court, sec, presque un V.
-            let tassels = Path { p in
-                let cx = w * 0.50
-                p.move(to: CGPoint(x: cx, y: neckY))
-                p.addLine(to: CGPoint(x: cx - w * 0.10, y: neckY + h * 0.14))
-                p.move(to: CGPoint(x: cx, y: neckY))
-                p.addLine(to: CGPoint(x: cx + w * 0.10, y: neckY + h * 0.14))
-            }
-            ctx.stroke(tassels, with: .color(stringColor), lineWidth: max(0.6, w * 0.06))
-        }
-        .frame(width: size, height: size)
-    }
-}
-
-/// Petite pièce d'or — utilise désormais l'asset pixel-art `coin.png` si
-/// présent dans le bundle. Sinon, retombe sur un dessin vectoriel
-/// (disque doré bordé d'encre + croix discrète) — utile comme garde-fou
-/// si l'asset est retiré, l'UI ne se brise pas.
-struct CoinIcon: View {
-    var size: CGFloat = 14
-
-    var body: some View {
-        Group {
-            if let img = Self.coinImage {
-                Image(uiImage: img)
-                    .resizable()
-                    .interpolation(.none)
-                    .aspectRatio(contentMode: .fit)
-                    .frame(width: size, height: size)
-            } else {
-                vectorFallback
-            }
-        }
-    }
-
-    /// Cache lazy : `coin.png` chargé une fois depuis le bundle. nil si
-    /// l'asset est absent (on retombe alors sur le dessin vectoriel).
-    private static let coinImage: UIImage? = {
-        guard let url = Bundle.main.url(forResource: "coin", withExtension: "png") else {
-            return nil
-        }
-        return UIImage(contentsOfFile: url.path)
-    }()
-
-    private var vectorFallback: some View {
-        ZStack {
-            Circle()
-                .fill(
-                    RadialGradient(
-                        colors: [
-                            Theme.oldGold,
-                            Theme.oldGold.opacity(0.65)
-                        ],
-                        center: .topLeading,
-                        startRadius: 0,
-                        endRadius: size
-                    )
-                )
-            Circle()
-                .stroke(Theme.ink.opacity(0.55), lineWidth: max(0.6, size * 0.06))
-            Path { p in
-                let inset = size * 0.32
-                p.move(to: CGPoint(x: size / 2, y: inset))
-                p.addLine(to: CGPoint(x: size / 2, y: size - inset))
-                p.move(to: CGPoint(x: inset, y: size / 2))
-                p.addLine(to: CGPoint(x: size - inset, y: size / 2))
-            }
-            .stroke(Theme.ink.opacity(0.55), lineWidth: max(0.5, size * 0.06))
-        }
-        .frame(width: size, height: size)
-    }
-}
-
-struct InventoryRow: View {
-    let itemId: String
-    /// True si c'est l'arme actuellement portée. Affiche un petit chip
-    /// « Équipée » à la place du bouton.
-    var isEquipped: Bool = false
-    /// Si non-nil, affiche un chip explicatif à la place du bouton Utiliser
-    /// (ex. « Endurance déjà au maximum »). Indique qu'un consommable
-    /// existe mais qu'il serait gâché ici.
-    var useDisabledReason: String? = nil
-    /// Closure « Utiliser » pour les consommables. Nil = item non
-    /// consommable OU à effet nul dans l'état courant.
-    var onUse: (() -> Void)? = nil
-    /// Closure « Équiper » pour les armes non encore portées. Nil = item
-    /// non équipable OU déjà équipé.
-    var onEquip: (() -> Void)? = nil
-    /// Closure « Déséquiper » — pertinente uniquement sur l'arme actuelle.
-    /// Utile surtout pour la lame maudite (perte de Chance) qu'on peut
-    /// décider de remiser pour récupérer sa stat.
-    var onUnequip: (() -> Void)? = nil
-
-    private var info: ItemCatalog.Info { ItemCatalog.info(itemId) }
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 14) {
-            itemIcon
-                .padding(.top, 2)
-
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text(info.name)
-                        .font(Theme.display(13))
-                        .foregroundColor(Theme.ink)
-                    if isEquipped { equippedChip }
-                    Spacer(minLength: 0)
-                }
-                Text(info.description)
-                    .font(Theme.body(14))
-                    .italic()
-                    .foregroundColor(Theme.inkFaded)
-                    .lineSpacing(3)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                if let effect = info.effect {
-                    Text(effect)
-                        .font(Theme.display(10))
-                        .foregroundColor(Theme.oldGold)
-                        .padding(.vertical, 3)
-                        .padding(.horizontal, 8)
-                        .background(
-                            RoundedRectangle(cornerRadius: 3, style: .continuous)
-                                .fill(Theme.oldGold.opacity(0.12))
-                        )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 3, style: .continuous)
-                                .stroke(Theme.oldGold.opacity(0.35), lineWidth: 0.5)
-                        )
-                }
-                if onUse != nil || onEquip != nil || onUnequip != nil
-                    || useDisabledReason != nil || info.bonusAppliedAtPickup {
-                    HStack(spacing: 8) {
-                        if let onUse {
-                            actionButton(label: "Utiliser",
-                                         icon: "drop.fill",
-                                         tint: Theme.blood,
-                                         action: onUse)
-                        } else if let reason = useDisabledReason {
-                            disabledChip(label: reason, icon: "drop.fill")
-                        } else if info.bonusAppliedAtPickup {
-                            disabledChip(label: "Effet appliqué",
-                                         icon: "checkmark.seal.fill")
-                        }
-                        if let onEquip {
-                            actionButton(label: "Équiper",
-                                         icon: "equip",
-                                         tint: Theme.inkBlue,
-                                         action: onEquip)
-                        }
-                        if let onUnequip {
-                            actionButton(label: "Déséquiper",
-                                         icon: "unequip",
-                                         tint: Theme.inkFaded,
-                                         action: onUnequip)
-                        }
-                    }
-                    .padding(.top, 2)
-                }
-            }
-        }
-        .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .fill(Theme.parchmentLight.opacity(0.55))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .stroke(Theme.inkFaded.opacity(0.35), lineWidth: 0.6)
-        )
-        // Items dont l'effet a été appliqué au pickup (bénédictions, sang
-        // spectral…) sont légèrement atténués pour signaler qu'ils sont
-        // déjà "joués" — ils restent dans le sac comme trace du parcours.
-        .opacity(info.bonusAppliedAtPickup ? 0.78 : 1.0)
-    }
-
-    private var equippedChip: some View {
-        Text("Équipée")
-            .font(Theme.display(9))
-            .foregroundColor(Theme.parchmentLight)
-            .padding(.vertical, 2)
-            .padding(.horizontal, 6)
-            .background(
-                RoundedRectangle(cornerRadius: 3, style: .continuous)
-                    .fill(Theme.inkBlue.opacity(0.85))
-            )
-    }
-
-    private func actionButton(label: String,
-                              icon: String,
-                              tint: Color,
-                              action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack(spacing: 5) {
-                Theme.icon(icon, size: 11, color: Theme.parchmentLight)
-                Text(label)
-                    .font(Theme.display(11))
-            }
-            .padding(.vertical, 6)
-            .padding(.horizontal, 12)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(InventoryActionButtonStyle(tint: tint))
-    }
-
-    /// Pavé inerte affiché à la place du bouton « Utiliser » quand l'effet
-    /// serait gâché (PV ou Chance déjà au max). Visuellement distinct du
-    /// bouton : pas de teinte vive, texte gris, pas de tap area.
-    private func disabledChip(label: String, icon: String) -> some View {
-        HStack(spacing: 5) {
-            Theme.icon(icon, size: 11, color: Theme.inkFaded.opacity(0.7))
-            Text(label)
-                .font(Theme.display(11))
-        }
-        .foregroundColor(Theme.inkFaded.opacity(0.7))
-        .padding(.vertical, 6)
-        .padding(.horizontal, 12)
-        .background(
-            RoundedRectangle(cornerRadius: 4, style: .continuous)
-                .fill(Theme.parchmentLight.opacity(0.40))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 4, style: .continuous)
-                .stroke(Theme.inkFaded.opacity(0.25), lineWidth: 0.5)
-        )
-    }
-
-    /// Icône d'item : vraie illustration (photo de musée domaine public)
-    /// si elle existe dans le bundle, sinon SF Symbol du catalogue.
-    /// La photo est désaturée et teintée parchemin pour s'intégrer.
-    @ViewBuilder
-    private var itemIcon: some View {
-        if let image = Self.loadItemImage(itemId: itemId) {
-            Image(uiImage: image)
-                .resizable()
-                .aspectRatio(contentMode: .fill)
-                .frame(width: 44, height: 44)
-                .clipped()
-                .saturation(0)
-                .colorMultiply(Theme.parchmentLight)
-                .overlay(
-                    LinearGradient(
-                        colors: [.clear, Theme.parchment.opacity(0.25)],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                )
-                .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 3, style: .continuous)
-                        .stroke(Theme.inkFaded.opacity(0.4), lineWidth: 0.5)
-                )
-        } else {
-            Theme.icon(info.icon, size: 16, color: Theme.oldGold)
-                .frame(width: 24, height: 24)
-        }
-    }
-
-    private static func loadItemImage(itemId: String) -> UIImage? {
-        guard let url = Bundle.main.url(forResource: "item_\(itemId)",
-                                         withExtension: "jpg"),
-              let img = UIImage(contentsOfFile: url.path) else {
-            return nil
-        }
-        return img
-    }
-}
 
 #Preview {
     ContentView()

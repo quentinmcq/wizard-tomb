@@ -30,8 +30,11 @@ struct MenuView: View {
                     .padding(.horizontal, 40)
                     .padding(.bottom, 28)
 
-                footer
-                    .padding(.bottom, 18)
+                // La version est désormais affichée uniquement dans
+                // l'écran Réglages → section "À propos". On retire le
+                // footer du menu d'accueil pour éviter le doublon
+                // (et d'autant que l'ancien était hardcodé "v0.3 — proto"
+                // sans rapport avec la version réelle du bundle).
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .onAppear {
@@ -107,6 +110,7 @@ struct MenuView: View {
                 )
                 .shadow(color: .black.opacity(0.5), radius: 6, x: 0, y: 2)
         }
+        .buttonStyle(SettingsIconButtonStyle())
         .accessibilityLabel("Ouvrir les réglages")
     }
 
@@ -178,7 +182,7 @@ struct MenuView: View {
         VStack(spacing: 10) {
             if session.hasSavedGame {
                 MenuPrimaryButton(label: "Reprendre l'aventure",
-                                  icon: "play.fill") {
+                                  icon: "start_game") {
                     audio.start()
                     session.resume()
                 }
@@ -188,7 +192,7 @@ struct MenuView: View {
                 }
             } else {
                 MenuPrimaryButton(label: "Commencer l'aventure",
-                                  icon: "play.fill") {
+                                  icon: "start_game") {
                     audio.start()
                     session.startCharacterCreation()
                 }
@@ -220,14 +224,9 @@ struct MenuView: View {
 
     // MARK: - Footer
 
-    /// Numéro de version : passé de 40 % d'opacité à 80 % + drop shadow
-    /// pour qu'il reste lisible sur le voile sombre du bas.
-    private var footer: some View {
-        Text("v0.3 — proto")
-            .font(Theme.display(10))
-            .foregroundColor(Theme.parchmentLight.opacity(0.8))
-            .shadow(color: .black.opacity(0.8), radius: 3, x: 0, y: 1)
-    }
+    // `footer` (numéro de version en bas) supprimé — la version vit
+    // désormais dans Réglages → À propos (et reflète le vrai bundle au
+    // lieu d'un hardcodé "v0.3 — proto").
 }
 
 // MARK: - Boutons du menu
@@ -241,8 +240,10 @@ struct MenuPrimaryButton: View {
         Button(action: action) {
             HStack(spacing: 10) {
                 if let icon {
-                    Image(systemName: icon)
-                        .font(.system(size: 15, weight: .semibold))
+                    // Theme.icon route automatiquement vers les PNG du bundle
+                    // (start_game, restart_game, etc.) ou SF Symbol sinon
+                    // (chevron.right, die.face.6.fill).
+                    Theme.icon(icon, size: 15, color: Theme.parchmentLight)
                 }
                 Text(label)
                     .font(Theme.display(15))
@@ -337,15 +338,31 @@ struct MenuTertiaryButton: View {
 struct MenuTertiaryButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .foregroundColor(Theme.parchmentLight.opacity(0.85))
+            // Texte plus contrasté : ink sombre sur fond clair (avant :
+            // parchemin clair sur fond trop transparent — illisible
+            // contre certaines zones de l'image de fond).
+            .foregroundColor(Theme.ink)
             .background(
                 RoundedRectangle(cornerRadius: 4, style: .continuous)
-                    .fill(Theme.parchmentLight.opacity(configuration.isPressed ? 0.20 : 0.10))
+                    .fill(Theme.parchmentLight.opacity(configuration.isPressed ? 0.85 : 0.65))
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 4, style: .continuous)
-                    .stroke(Theme.parchmentLight.opacity(0.30), lineWidth: 0.5)
+                    .stroke(Theme.inkFaded.opacity(0.45), lineWidth: 0.7)
             )
+            .shadow(color: Theme.ink.opacity(0.25), radius: 3, x: 0, y: 1)
+            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
+            .playsButtonTap(isPressed: configuration.isPressed)
+    }
+}
+
+/// Style minimaliste pour le bouton roue d'engrenage du menu : pas de
+/// background custom (le label porte déjà son cercle parchemin), juste
+/// un léger scale au press + le son de clic UI.
+private struct SettingsIconButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.94 : 1.0)
             .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
             .playsButtonTap(isPressed: configuration.isPressed)
     }

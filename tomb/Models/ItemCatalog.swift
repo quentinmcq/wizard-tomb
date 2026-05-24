@@ -82,7 +82,7 @@ enum ItemCatalog {
         "blessing": Info(
             name: "Bénédiction du mendiant",
             description: "Le vieil homme aux yeux trop clairs t'a murmuré quelques mots après avoir empoché ta pièce. Le seuil de ta Chance s'en est trouvé un peu plus haut.",
-            icon: "hands.sparkles.fill",
+            icon: "beggar_blessing",
             effect: "+1 Chance permanente",
             bonusAppliedAtPickup: true
         ),
@@ -108,8 +108,20 @@ enum ItemCatalog {
         "rumour_mortimer": Info(
             name: "Rumeur de l'auberge",
             description: "Un voyageur ivre a évoqué un disciple banni de Mortimer, encore vivant dans la forêt. Garde l'œil ouvert au carrefour.",
-            icon: "text.bubble.fill",
+            icon: "dialogue_option",
             effect: "Débloque un choix dans la forêt"
+        ),
+        "carrefour_blade_rumour": Info(
+            name: "Rumeur des bûcherons",
+            description: "Une lame plantée dans le tronc d'un arbre près du carrefour. Personne n'a osé la déloger.",
+            icon: "dialogue_option",
+            effect: "Débloque une option au carrefour"
+        ),
+        "seuils_word": Info(
+            name: "Le mot du Seuil",
+            description: "Un mot gravé profond au-dessus de l'autel du père Cassien, lisible seulement par qui s'arrête trois fois pour le déchiffrer. Il pèse dans ta bouche comme une pierre tiède.",
+            icon: "spellbook",
+            effect: "Indice caché — usage inconnu"
         ),
         "protective_charm": Info(
             name: "Charme du sage",
@@ -145,7 +157,7 @@ enum ItemCatalog {
         "silver_chain": Info(
             name: "Chaîne d'argent de Tomas",
             description: "Tu l'as décrochée du cou d'un squelette dans le couloir du tombeau. Une vieille femme l'attend, quelque part à Roncebrune.",
-            icon: "link",
+            icon: "silver_necklace",
             effect: "+30 au score si rapporté"
         ),
 
@@ -154,14 +166,14 @@ enum ItemCatalog {
         "forest_herbs": Info(
             name: "Herbes forestières",
             description: "Une poignée d'achillée et de millepertuis ramassée près des pierres dressées. Mâchées et avalées, elles ralentissent le sang qui coule.",
-            icon: "leaf.fill",
+            icon: "forest_grass",
             effect: "+2 Endurance à l'usage",
             consumable: .heal(2)
         ),
         "hunter_compass": Info(
             name: "Boussole du chasseur",
             description: "Une rose des vents sculptée dans du chêne, taillée par un voyageur reconnaissant. Elle s'oriente toute seule, même dans la brume la plus opaque.",
-            icon: "location.north.fill",
+            icon: "compass",
             effect: "Aide à s'orienter dans les passages obscurs"
         ),
         "assassin_dagger": Info(
@@ -180,7 +192,7 @@ enum ItemCatalog {
         "holy_water": Info(
             name: "Eau bénite",
             description: "Une petite fiole bouchée de cire noire, gravée d'une croix simple. L'eau à l'intérieur ne s'est pas troublée malgré les années — Mortimer y a mis trop d'efforts à la chercher pour qu'elle soit ordinaire.",
-            icon: "drop.halffull",
+            icon: "holy_water",
             effect: "−1 Habileté au spectre"
         ),
 
@@ -195,7 +207,7 @@ enum ItemCatalog {
         "tarnished_mirror": Info(
             name: "Miroir terni",
             description: "Un petit miroir d'argent rouillé, cerclé d'écailles, repêché sur une plateforme inondée. Sa surface ne reflète plus rien clairement — mais elle reflète encore *quelque chose*.",
-            icon: "circle.hexagongrid.fill",
+            icon: "silver_miror",
             effect: "Permet d'affronter le basilic"
         ),
         "basilisk_blood": Info(
@@ -211,7 +223,7 @@ enum ItemCatalog {
         "priest_blessing": Info(
             name: "Bénédiction du père Cassien",
             description: "Le vieux prêtre du temple de Roncebrune a posé ses mains sur ton front et murmuré une prière qu'il portait depuis cinquante ans. Il avait connu Mortimer enfant — il aurait préféré que tu n'aies jamais à descendre dans son trou.",
-            icon: "cross.fill",
+            icon: "father_blessing",
             effect: "+1 Endurance max et +1 Chance permanente",
             bonusAppliedAtPickup: true
         ),
@@ -232,7 +244,7 @@ enum ItemCatalog {
         "witch_fetish": Info(
             name: "Fétiche de la sorcière",
             description: "Petit fagot d'os de poisson cousu d'un fil de cheveux blancs, échangé contre trois gouttes de ton sang. À écraser quand tu sens un regard dans ton dos.",
-            icon: "moon.zzz.fill",
+            icon: "witch_bone",
             effect: "Combat — +2 Habileté pour un round",
             consumable: .boostSkillNextAttack(2)
         ),

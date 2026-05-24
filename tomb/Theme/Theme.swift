@@ -31,6 +31,28 @@ enum Theme {
     /// Or terne pour pièces et marquages précieux.
     static let oldGold        = Color(red: 0.66, green: 0.49, blue: 0.16)
 
+    // MARK: - Couleurs sémantiques
+    //
+    // Aliases sur les couleurs brutes ci-dessus, mais NOMMÉS PAR LE
+    // CONCEPT DE JEU qu'ils représentent. Permet d'écrire
+    // `Theme.semantic.danger` au lieu de `Theme.blood` quand on parle d'un
+    // bouton dangereux (et de changer la teinte ailleurs sans toucher au
+    // sens). Quand on est dans un contexte clairement décoratif (ex. un
+    // fleuron), on garde le nom brut (`oldGold`).
+
+    /// Couleur de la Chance, des effets bénéfiques mineurs (potion de
+    /// soin verte, sentier sûr…). Vert-de-gris discret.
+    static let luckColor: Color    = verdigris
+    /// Couleur de l'Habileté, du combat « calme et calculé » (parade,
+    /// attaque calculée). Bleu encre.
+    static let skillColor: Color   = inkBlue
+    /// Couleur du sang, de l'Endurance, des dégâts subis ou portés, des
+    /// avertissements critiques (PV bas, échec dramatique).
+    static let dangerColor: Color  = blood
+    /// Couleur de l'or — pièces, valeur précieuse, victoire, accents
+    /// solennels (titre de chapitre).
+    static let treasureColor: Color = oldGold
+
     // MARK: - Fond du livre
 
     /// Dégradé radial qui simule la lumière qui tombe au centre du folio
@@ -150,12 +172,19 @@ extension View {
 }
 
 /// Petit modifier qui joue `.buttonTap` quand `isPressed` passe à true.
+/// Le `play()` est différé d'un tick runloop pour ne pas exécuter le
+/// scheduling du buffer audio dans le même run que la propagation du tap
+/// — sinon, sur des vues chargées (HUD combat), le main thread peut se
+/// faire serrer juste assez pour faire grésiller la sortie audio et
+/// déclencher un warning iOS « System gesture gate timed out ».
 struct PlaysButtonTap: ViewModifier {
     let isPressed: Bool
     func body(content: Content) -> some View {
         content.onChange(of: isPressed) { _, newValue in
             if newValue {
-                AmbientAudio.shared.play(.buttonTap)
+                DispatchQueue.main.async {
+                    AmbientAudio.shared.play(.buttonTap)
+                }
             }
         }
     }
@@ -227,6 +256,13 @@ extension Theme {
     /// matcher visuellement le poids d'un SF Symbol à la même `size`.
     /// Retourne `EmptyView` si l'asset n'existe pas — préférer `Theme.icon`
     /// qui fallback automatiquement sur SF Symbol.
+    ///
+    /// `.alignmentGuide(.center)` décalé de +1 pt : compense le descender
+    /// des polices `Theme.display` (IM Fell, Cinzel) qui décale le centre
+    /// visuel du texte vers le haut par rapport au centre géométrique de
+    /// sa bbox. Sans ça, dans un HStack(.center) avec texte (boutons
+    /// Utiliser/Équiper, chips Effet appliqué, etc.), l'icône paraissait
+    /// trop haute relativement au texte.
     @ViewBuilder
     static func pixelImage(named name: String, size: CGFloat) -> some View {
         if let img = bundleImage(named: name) {
@@ -235,6 +271,9 @@ extension Theme {
                 .interpolation(.none)
                 .aspectRatio(contentMode: .fit)
                 .frame(width: size * 1.3, height: size * 1.3)
+                .alignmentGuide(VerticalAlignment.center) { d in
+                    d[VerticalAlignment.center] - 1
+                }
         } else {
             EmptyView()
         }
