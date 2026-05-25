@@ -2,11 +2,11 @@
 
 Aventure dont vous êtes le héros pour iOS, dans la veine des *Défis Fantastiques* (Fighting Fantasy).
 
-Combat tour-par-tour à 2d6 + Habileté, jets de Chance, inventaire, plusieurs fins. Tout le texte est en français ; le moteur tourne sur InkSwift (Ink / inklewriter) wrappé en SwiftUI.
+Combat tour-par-tour à 2d6 + Habileté, jets de Chance, inventaire, plusieurs fins. Le moteur tourne sur InkSwift (Ink / inklewriter) wrappé en SwiftUI.
 
 ## Lancer le projet
 
-- Xcode 17+ avec SDK iOS 26.5 (le projet cible iOS 26.5+ pour quelques API SwiftUI récentes).
+- Xcode 26.5 avec SDK iOS 26.5.
 - Ouvrir `tomb.xcodeproj`, sélectionner le scheme `tomb`, choisir un simulateur ou un device, ⌘R.
 - Aucune dépendance externe à installer : InkSwift et JXKit sont déjà résolus via Swift Package Manager (cf. `tomb.xcodeproj/project.xcworkspace`).
 
@@ -26,27 +26,6 @@ tomb/
 ├── Resources/    adventure.ink, *.ttf (IM Fell, Cinzel)
 └── Images/       portraits ennemis, illustrations de scène, menu_cover.jpg
 ```
-
-| Fichier | Rôle |
-|---|---|
-| `App/TombApp.swift` | Point d'entrée SwiftUI. Instancie `GameSession` et `AmbientAudio`. |
-| `Views/ContentView.swift` | Routeur de l'écran principal : menu, création de personnage, jeu, fin. Anime le tournage de page. |
-| `Views/MenuView.swift` | Page d'accueil avec l'illustration de fond et les boutons Reprendre / Nouvelle partie / Réglages. |
-| `Views/CharacterCreationView.swift` | Tirage séquentiel des dés (Endurance → Habileté → Chance) puis choix de la difficulté. |
-| `Session/GameSession.swift` | Cerveau de la partie : avance la story Ink, applique les tags d'effet, gère sauvegarde / restauration, déclenche les combats et les jets de chance. |
-| `Models/Models.swift` | `PlayerState`, `Choice`, `EventMessage`, `Difficulty`, `Chapter`, `CharacterRoll`. |
-| `Models/Battle.swift` | Modèle et moteur du combat tour-par-tour (`BattleState`, `BattleEngine`). |
-| `Views/BattleView.swift` | UI du combat : carte de l'ennemi, animation des dés, journal, boutons. |
-| `Models/EnemyCatalog.swift` | Stats des ennemis, indexés par l'id utilisé dans le tag `# combat:`. |
-| `Models/ItemCatalog.swift` | Nom, description et icône des items affichés dans l'inventaire. |
-| `Views/DiceView.swift` | Dé 3D en SceneKit et overlay des jets (combat + chance narrative). |
-| `Views/PassageText.swift` | Affichage du texte narratif avec révélation progressive. |
-| `Views/EffectBurstView.swift` | Notification centrale au gain d'objet ou de bonus permanent. |
-| `Views/SettingsView.swift` | Audio, suppression de sauvegarde, crédits. |
-| `Theme/Theme.swift` | Palette (parchemin, encre, sang…), polices (IM Fell, Cinzel), cadres (`leatherFrame`, `ornamentedHudFrame`). |
-| `Audio/AmbientAudio.swift` | Couche audio : ambiance d'exploration, musique de combat, effets ponctuels. Préférences persistées. |
-| `Audio/SoundEvents.swift` | Synthèse procédurale des effets sonores (fallback si le fichier audio n'est pas trouvé). |
-| `Resources/adventure.ink` | Toute la narration — knots Ink (identifiants en anglais) avec tags de communication vers Swift. |
 
 ### Tags Ink reconnus
 
@@ -93,8 +72,6 @@ En Release, le fichier est lu directement depuis le bundle.
 
 ### Visuel
 - **Portraits de monstres** — illustrations issues de la série *Fighting Fantasy* (Steve Jackson & Ian Livingstone, Puffin / Penguin Books) et de leurs illustrateurs — Russ Nicholson, Iain McCaig, Alan Langford, Bob Harvey et al. Utilisées comme hommage non commercial dans un projet personnel ; à retirer si l'app sort un jour de ce cadre.
-- **Illustrations de scène** — gravures domaine public de Gustave Doré (*Divine Comédie*, 1861), Hans Holbein le Jeune (*Danse macabre*, 1538), Giovanni Battista Piranesi (*Carceri d'Invenzione*, 1750), via Wikimedia Commons.
-- **Portrait NPC (Tellor)** — illustration originale réalisée pour le projet, dans le style des éditions Spook's Books.
 
 ### Texte & code
 - Aventure originale écrite pour le projet, inspirée des *Défis Fantastiques* (Steve Jackson & Ian Livingstone) et plus particulièrement de *La Nuit du Loup-Garou*, *La Cité des Voleurs* et *La Maison de l'Enfer*.
