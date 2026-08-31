@@ -1,15 +1,3 @@
-//
-//  InventoryView.swift
-//  Feuille d'inventaire en plein écran : carte « Or », liste d'items avec
-//  actions (Utiliser / Équiper / Déséquiper), chips d'état (Équipée /
-//  Nouveau / Effet appliqué), et icônes vectorielles utilitaires
-//  (`CoinIcon`, `PouchIcon`).
-//
-//  Extrait de `ContentView.swift` pour lisibilité. Aucune dépendance
-//  inversée : tout ce qui est utilisé ici (Theme, GameSession, ItemCatalog…)
-//  vit ailleurs.
-//
-
 import SwiftUI
 
 // MARK: - Inventaire (sheet)
@@ -18,8 +6,6 @@ struct InventoryView: View {
     @ObservedObject var session: GameSession
     @Environment(\.dismiss) private var dismiss
 
-    /// Phrase courte expliquant pourquoi un consommable est inutilisable
-    /// dans l'état actuel — affichée sous le bouton grisé.
     private func consumableWasteReason(for effect: ConsumableEffect) -> String {
         switch effect {
         case .heal:        return "Endurance déjà au maximum"
@@ -44,9 +30,6 @@ struct InventoryView: View {
                                     let info = ItemCatalog.all[itemId]
                                     let isWeapon = info?.weapon != nil
                                     let isEquipped = session.player.equippedWeapon == itemId
-                                    // Un consommable n'est proposable que s'il aurait
-                                    // un effet réel (pas un soin à PV pleins, pas de
-                                    // restore de Chance déjà au max).
                                     let useful = info?.consumable.map(session.isUseful(effect:)) ?? false
                                     InventoryRow(
                                         itemId: itemId,
@@ -80,10 +63,6 @@ struct InventoryView: View {
                         .foregroundColor(Theme.ink)
                 }
             }
-            // Repère les items vus : on laisse ~1.5 s au joueur pour
-            // apercevoir les chips dorés « Nouveau » avant de les retirer
-            // avec un fondu doux. Si le joueur ferme avant, le `dismiss`
-            // applique le clear immédiatement (cf. onDisappear).
             .onAppear {
                 guard !session.unseenItems.isEmpty else { return }
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
@@ -112,8 +91,6 @@ struct InventoryView: View {
     }
 }
 
-/// Petite carte "Or" en tête d'inventaire. L'or apparaît déjà dans le HUD
-/// mais reste affiché ici pour rester visible quand le sac est ouvert.
 struct ResourceCard: View {
     let gold: Int
 
@@ -121,7 +98,7 @@ struct ResourceCard: View {
         HStack(spacing: 10) {
             CoinIcon(size: 18)
             Text("\(gold)")
-                .font(.system(size: 22, weight: .bold, design: .serif))
+                .font(Theme.serif(22, weight: .bold))
                 .foregroundColor(Theme.ink)
                 .monospacedDigit()
             Text("pièce\(gold > 1 ? "s" : "") d'or")
@@ -132,83 +109,10 @@ struct ResourceCard: View {
         .padding(.vertical, 12)
         .padding(.horizontal, 16)
         .frame(maxWidth: .infinity)
-        .background(
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .fill(Theme.parchmentLight.opacity(0.55))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .stroke(Theme.inkFaded.opacity(0.45), lineWidth: 0.8)
-        )
+        .parchmentCard()
     }
 }
 
-/// Bourse à cordons : silhouette de pochette en cuir resserrée par une
-/// ficelle, façon "bourse d'or" d'aventurier. Pas de SF Symbol équivalent,
-/// donc on la dessine à la main. Utilisée comme icône d'inventaire dans
-/// le HUD et dans le récap de fin de partie.
-struct PouchIcon: View {
-    var size: CGFloat = 14
-    var tint: Color = Theme.ink
-
-    var body: some View {
-        Canvas { ctx, _ in
-            let w = size
-            let h = size
-            // Bordure / corps : forme arrondie qui s'évase vers le bas,
-            // resserrée en haut comme une bourse fermée. Construite à la
-            // main avec deux courbes de Bézier symétriques.
-            let body = Path { p in
-                let neckLeft  = CGPoint(x: w * 0.32, y: h * 0.32)
-                let neckRight = CGPoint(x: w * 0.68, y: h * 0.32)
-                let leftBelly = CGPoint(x: w * 0.05, y: h * 0.70)
-                let bottom    = CGPoint(x: w * 0.50, y: h * 0.98)
-                let rightBelly = CGPoint(x: w * 0.95, y: h * 0.70)
-
-                p.move(to: neckLeft)
-                p.addQuadCurve(to: leftBelly,
-                               control: CGPoint(x: w * 0.02, y: h * 0.45))
-                p.addQuadCurve(to: bottom,
-                               control: CGPoint(x: w * 0.05, y: h * 1.02))
-                p.addQuadCurve(to: rightBelly,
-                               control: CGPoint(x: w * 0.95, y: h * 1.02))
-                p.addQuadCurve(to: neckRight,
-                               control: CGPoint(x: w * 0.98, y: h * 0.45))
-                p.closeSubpath()
-            }
-            ctx.fill(body, with: .color(tint))
-
-            // Cordon : trait horizontal traversant le col, avec deux petits
-            // brins qui retombent. Inscrit en couleur "encre" plus claire
-            // pour rester lisible sur la pochette.
-            let stringColor = tint.opacity(0.55)
-            let stringWidth = max(0.8, w * 0.08)
-            let neckY = h * 0.30
-            let cord = Path { p in
-                p.move(to: CGPoint(x: w * 0.22, y: neckY))
-                p.addLine(to: CGPoint(x: w * 0.78, y: neckY))
-            }
-            ctx.stroke(cord, with: .color(stringColor), lineWidth: stringWidth)
-
-            // Deux petits brins qui pendent du nœud central, pour
-            // l'identification "ficelle". Court, sec, presque un V.
-            let tassels = Path { p in
-                let cx = w * 0.50
-                p.move(to: CGPoint(x: cx, y: neckY))
-                p.addLine(to: CGPoint(x: cx - w * 0.10, y: neckY + h * 0.14))
-                p.move(to: CGPoint(x: cx, y: neckY))
-                p.addLine(to: CGPoint(x: cx + w * 0.10, y: neckY + h * 0.14))
-            }
-            ctx.stroke(tassels, with: .color(stringColor), lineWidth: max(0.6, w * 0.06))
-        }
-        .frame(width: size, height: size)
-    }
-}
-
-/// Petite pièce d'or — utilise désormais l'asset pixel-art `coin.png` si
-/// présent dans le bundle. Sinon, retombe sur un dessin vectoriel
-/// (disque doré bordé d'encre + croix discrète) — utile comme garde-fou
-/// si l'asset est retiré, l'UI ne se brise pas.
 struct CoinIcon: View {
     var size: CGFloat = 14
 
@@ -226,14 +130,7 @@ struct CoinIcon: View {
         }
     }
 
-    /// Cache lazy : `coin.png` chargé une fois depuis le bundle. nil si
-    /// l'asset est absent (on retombe alors sur le dessin vectoriel).
-    private static let coinImage: UIImage? = {
-        guard let url = Bundle.main.url(forResource: "coin", withExtension: "png") else {
-            return nil
-        }
-        return UIImage(contentsOfFile: url.path)
-    }()
+    private static var coinImage: UIImage? { Theme.image(named: "coin", ext: "png") }
 
     private var vectorFallback: some View {
         ZStack {
@@ -266,26 +163,11 @@ struct CoinIcon: View {
 
 struct InventoryRow: View {
     let itemId: String
-    /// True si c'est l'arme actuellement portée. Affiche un petit chip
-    /// « Équipée » à la place du bouton.
     var isEquipped: Bool = false
-    /// Si non-nil, affiche un chip explicatif à la place du bouton Utiliser
-    /// (ex. « Endurance déjà au maximum »). Indique qu'un consommable
-    /// existe mais qu'il serait gâché ici.
     var useDisabledReason: String? = nil
-    /// Closure « Utiliser » pour les consommables. Nil = item non
-    /// consommable OU à effet nul dans l'état courant.
     var onUse: (() -> Void)? = nil
-    /// Closure « Équiper » pour les armes non encore portées. Nil = item
-    /// non équipable OU déjà équipé.
     var onEquip: (() -> Void)? = nil
-    /// Closure « Déséquiper » — pertinente uniquement sur l'arme actuelle.
-    /// Utile surtout pour la lame maudite (perte de Chance) qu'on peut
-    /// décider de remiser pour récupérer sa stat.
     var onUnequip: (() -> Void)? = nil
-    /// Item ramassé que le joueur n'a pas encore consulté → chip doré
-    /// « Nouveau » qui aide à le repérer dans la liste. Repassé à false
-    /// dès que la feuille d'inventaire s'affiche (par GameSession).
     var isUnseen: Bool = false
 
     private var info: ItemCatalog.Info { ItemCatalog.info(itemId) }
@@ -313,7 +195,7 @@ struct InventoryRow: View {
                 if let effect = info.effect {
                     Text(effect)
                         .font(Theme.display(10))
-                        .foregroundColor(Theme.oldGold)
+                        .foregroundColor(Theme.goldInk)
                         .padding(.vertical, 3)
                         .padding(.horizontal, 8)
                         .background(
@@ -334,11 +216,6 @@ struct InventoryRow: View {
                                          tint: Theme.blood,
                                          action: onUse)
                         } else if let reason = useDisabledReason {
-                            // Choisit l'icône selon la raison du grisage :
-                            //   - Endurance au max → max_life (cœur plein)
-                            //   - autres (Chance max, hors combat) → drop.fill
-                            // Plus parlant que la goutte par défaut quand on
-                            // veut signaler qu'un soin serait gâché.
                             let icon = reason.contains("Endurance")
                                 ? "max_life"
                                 : "drop.fill"
@@ -366,17 +243,7 @@ struct InventoryRow: View {
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .fill(Theme.parchmentLight.opacity(0.55))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .stroke(Theme.inkFaded.opacity(0.35), lineWidth: 0.6)
-        )
-        // Items dont l'effet a été appliqué au pickup (bénédictions, sang
-        // spectral…) sont légèrement atténués pour signaler qu'ils sont
-        // déjà "joués" — ils restent dans le sac comme trace du parcours.
+        .parchmentCard(stroke: 0.35, lineWidth: 0.6)
         .opacity(info.bonusAppliedAtPickup ? 0.78 : 1.0)
     }
 
@@ -392,9 +259,6 @@ struct InventoryRow: View {
             )
     }
 
-    /// Chip doré « Nouveau » affiché à côté du nom d'un item ramassé que
-    /// le joueur n'a pas encore consulté dans cette feuille d'inventaire.
-    /// Disparaît à la prochaine ouverture (cf. `markItemsAsSeen()`).
     private var newChip: some View {
         Text("Nouveau")
             .font(Theme.display(9))
@@ -424,9 +288,6 @@ struct InventoryRow: View {
         .buttonStyle(InventoryActionButtonStyle(tint: tint))
     }
 
-    /// Pavé inerte affiché à la place du bouton « Utiliser » quand l'effet
-    /// serait gâché (PV ou Chance déjà au max). Visuellement distinct du
-    /// bouton : pas de teinte vive, texte gris, pas de tap area.
     private func disabledChip(label: String, icon: String) -> some View {
         HStack(spacing: 5) {
             Theme.icon(icon, size: 11, color: Theme.inkFaded.opacity(0.7))
@@ -446,9 +307,6 @@ struct InventoryRow: View {
         )
     }
 
-    /// Icône d'item : vraie illustration (photo de musée domaine public)
-    /// si elle existe dans le bundle, sinon SF Symbol du catalogue.
-    /// La photo est désaturée et teintée parchemin pour s'intégrer.
     @ViewBuilder
     private var itemIcon: some View {
         if let image = Self.loadItemImage(itemId: itemId) {
@@ -472,17 +330,12 @@ struct InventoryRow: View {
                         .stroke(Theme.inkFaded.opacity(0.4), lineWidth: 0.5)
                 )
         } else {
-            Theme.icon(info.icon, size: 16, color: Theme.oldGold)
+            Theme.icon(info.icon, size: 16, color: Theme.goldInk)
                 .frame(width: 24, height: 24)
         }
     }
 
     private static func loadItemImage(itemId: String) -> UIImage? {
-        guard let url = Bundle.main.url(forResource: "item_\(itemId)",
-                                         withExtension: "jpg"),
-              let img = UIImage(contentsOfFile: url.path) else {
-            return nil
-        }
-        return img
+        Theme.photo(named: "item_\(itemId)")
     }
 }

@@ -1,10 +1,3 @@
-//
-//  MenuView.swift
-//  Écran d'accueil dramatisé : gravure de fond + voile sombre, titre en
-//  relief, tagline en italique, action principale (Reprendre / Commencer)
-//  + action secondaire (Nouvelle partie) si une sauvegarde existe.
-//
-
 import SwiftUI
 
 struct MenuView: View {
@@ -29,19 +22,9 @@ struct MenuView: View {
                 actions
                     .padding(.horizontal, 40)
                     .padding(.bottom, 28)
-
-                // La version est désormais affichée uniquement dans
-                // l'écran Réglages → section "À propos". On retire le
-                // footer du menu d'accueil pour éviter le doublon
-                // (et d'autant que l'ancien était hardcodé "v0.3 — proto"
-                // sans rapport avec la version réelle du bundle).
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .onAppear {
-                // Démarre l'ambiance dès l'affichage du menu : le drone doit
-                // poser l'atmosphère avant même que le joueur ne clique sur
-                // "Commencer". Idempotent côté `AmbientAudio` (guard sur
-                // `isPlaying`), donc safe si la vue réapparaît plus tard.
                 audio.start()
             }
             .padding(.horizontal, 24)
@@ -53,9 +36,7 @@ struct MenuView: View {
         .background {
             ZStack {
                 Color.black
-                if let url = Bundle.main.url(forResource: "menu_cover",
-                                              withExtension: "jpg"),
-                   let img = UIImage(contentsOfFile: url.path) {
+                if let img = Theme.photo(named: "menu_cover") {
                     Image(uiImage: img)
                         .resizable()
                         .scaledToFill()
@@ -99,7 +80,7 @@ struct MenuView: View {
             showingSettings = true
         } label: {
             Theme.icon("settings", size: 17, color: Theme.ink)
-                .frame(width: 40, height: 40)
+                .frame(width: 44, height: 44)
                 .background(
                     Circle()
                         .fill(Theme.parchmentLight.opacity(0.92))
@@ -116,21 +97,18 @@ struct MenuView: View {
 
     // MARK: - Titre
 
-    /// Rouge éclairci spécifique au menu : `Theme.blood` est trop foncé
-    /// pour ressortir nettement sur la gravure sombre. On garde la même
-    /// teinte mais saturée et luminosité plus haute.
     private static let menuBloodBright = Color(red: 0.85, green: 0.22, blue: 0.18)
 
     private var title: some View {
         VStack(spacing: -2) {
             Text("Le Tombeau")
-                .font(.system(size: 52, weight: .bold, design: .serif))
+                .font(Theme.serif(52, weight: .bold, maxScale: 1.2))
                 .foregroundColor(Theme.parchmentLight)
                 .shadow(color: .black.opacity(0.95), radius: 10, x: 0, y: 4)
                 .shadow(color: Self.menuBloodBright.opacity(0.40), radius: 24, x: 0, y: 0)
 
             Text("du Sorcier")
-                .font(.system(size: 48, weight: .regular, design: .serif))
+                .font(Theme.serif(48, maxScale: 1.2))
                 .italic()
                 .foregroundColor(Self.menuBloodBright)
                 .shadow(color: .black.opacity(0.95), radius: 8, x: 0, y: 3)
@@ -141,13 +119,9 @@ struct MenuView: View {
 
     // MARK: - Tagline
 
-    /// Citation d'ambiance qui remplace la pitch méta : on entre dans le
-    /// récit dès la page d'accueil. Cartouche d'encre semi-transparent
-    /// derrière le texte pour garantir la lisibilité quelle que soit la
-    /// gravure de fond.
     private var tagline: some View {
         Text("« Cinquante ans plus tard, le sorcier attend toujours. »")
-            .font(.system(size: 16, weight: .semibold, design: .serif))
+            .font(Theme.serif(16, weight: .semibold))
             .italic()
             .foregroundColor(Theme.parchmentLight)
             .multilineTextAlignment(.center)
@@ -201,9 +175,6 @@ struct MenuView: View {
         }
     }
 
-    /// Petite barre de boutons « Tes aventures » / « Bestiaire » / « Hauts
-    /// faits » sous les actions principales. Style discret pour ne pas voler
-    /// la vedette à l'action principale mais visibles dès l'accueil.
     private var metaProgressionRow: some View {
         HStack(spacing: 6) {
             MenuTertiaryButton(label: "Aventures",
@@ -223,10 +194,6 @@ struct MenuView: View {
     }
 
     // MARK: - Footer
-
-    // `footer` (numéro de version en bas) supprimé — la version vit
-    // désormais dans Réglages → À propos (et reflète le vrai bundle au
-    // lieu d'un hardcodé "v0.3 — proto").
 }
 
 // MARK: - Boutons du menu
@@ -240,9 +207,6 @@ struct MenuPrimaryButton: View {
         Button(action: action) {
             HStack(spacing: 10) {
                 if let icon {
-                    // Theme.icon route automatiquement vers les PNG du bundle
-                    // (start_game, restart_game, etc.) ou SF Symbol sinon
-                    // (chevron.right, die.face.6.fill).
                     Theme.icon(icon, size: 15, color: Theme.parchmentLight)
                 }
                 Text(label)
@@ -310,9 +274,6 @@ struct MenuSecondaryButtonStyle: ButtonStyle {
     }
 }
 
-/// Bouton "tertiaire" du menu : compact, fond parchemin transparent, sert
-/// aux accès méta-progression (fins découvertes, bestiaire). Volontairement
-/// discret pour ne pas marcher sur les pieds des boutons d'action principaux.
 struct MenuTertiaryButton: View {
     let label: String
     let icon: String
@@ -321,8 +282,6 @@ struct MenuTertiaryButton: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 6) {
-                // Theme.icon intercepte les PNG du bundle (adventures,
-                // bestiary, achievements) et retombe sur SF Symbol sinon.
                 Theme.icon(icon, size: 11, color: Theme.parchmentLight.opacity(0.85))
                 Text(label)
                     .font(Theme.display(11))
@@ -338,9 +297,6 @@ struct MenuTertiaryButton: View {
 struct MenuTertiaryButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            // Texte plus contrasté : ink sombre sur fond clair (avant :
-            // parchemin clair sur fond trop transparent — illisible
-            // contre certaines zones de l'image de fond).
             .foregroundColor(Theme.ink)
             .background(
                 RoundedRectangle(cornerRadius: 4, style: .continuous)
@@ -356,9 +312,6 @@ struct MenuTertiaryButtonStyle: ButtonStyle {
     }
 }
 
-/// Style minimaliste pour le bouton roue d'engrenage du menu : pas de
-/// background custom (le label porte déjà son cercle parchemin), juste
-/// un léger scale au press + le son de clic UI.
 private struct SettingsIconButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label

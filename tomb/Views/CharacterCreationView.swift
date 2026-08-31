@@ -1,42 +1,23 @@
-//
-//  CharacterCreationView.swift
-//  Création de personnage en quatre temps : on lance d'abord les dés
-//  d'Endurance, puis d'Habileté, puis de Chance, et on arrive sur la page
-//  de difficulté qui récapitule le tirage. Pas de bouton « relancer » :
-//  si le joueur veut d'autres dés, il recommence l'aventure.
-//
-
 import SwiftUI
 
 struct CharacterCreationView: View {
     @ObservedObject var session: GameSession
     @ObservedObject var audio: AmbientAudio
 
-    /// Étapes du tirage séquentiel.
     enum Phase {
         case stamina, skill, luck, difficulty
     }
 
     @State private var phase: Phase = .stamina
 
-    /// Les dés sont conservés en l'état dans la vue tant que le joueur n'a pas
-    /// validé la création — ils ne bougent plus une fois lancés.
     @State private var staminaDice: (Int, Int)? = nil
     @State private var skillDie: Int? = nil
     @State private var luckDie: Int? = nil
 
-    /// Forces la recréation des `Dice3DView` quand on lance pour la première
-    /// fois (l'animation ne rejoue jamais ensuite — pas de relance).
     @State private var rollGeneration: Int = 0
 
-    /// Bascule à true une fois l'animation des dés terminée, comme dans le
-    /// combat : on cache le total tant que les dés roulent, on le révèle
-    /// d'un seul coup quand ils se posent.
     @State private var revealed: Bool = false
 
-    /// Durée de l'animation des Dice3DView (alignée sur `durationMs` passé
-    /// plus bas). On attend ce temps + un petit délai avant de révéler le
-    /// total.
     private let diceDurationMs = 900
 
     var body: some View {
@@ -60,7 +41,7 @@ struct CharacterCreationView: View {
     private var header: some View {
         VStack(spacing: 6) {
             Text("L'aventurier")
-                .font(.system(size: 28, weight: .semibold, design: .serif))
+                .font(Theme.serif(28, weight: .semibold))
                 .foregroundColor(Theme.ink)
             Text(headerSubtitle)
                 .font(Theme.body(14))
@@ -186,10 +167,6 @@ struct CharacterCreationView: View {
             RoundedRectangle(cornerRadius: 6, style: .continuous)
                 .stroke(Theme.inkFaded.opacity(0.45), lineWidth: 0.8)
         )
-        // Tap-to-skip : un appui sur la carte révèle immédiatement le
-        // total au lieu d'attendre la fin de l'animation des dés. Utile
-        // pour les joueurs qui relancent l'aventure plusieurs fois et
-        // n'ont pas envie de revoir 3 cycles complets de roll.
         .contentShape(Rectangle())
         .onTapGesture { skipReveal() }
     }
@@ -273,7 +250,6 @@ struct CharacterCreationView: View {
         }
     }
 
-    /// Asset pixel-art associé au niveau de difficulté.
     private func difficultyIcon(_ d: Difficulty) -> String {
         switch d {
         case .adventurer: return "easy"
@@ -284,10 +260,6 @@ struct CharacterCreationView: View {
 
     private var difficultyBanner: some View {
         let hasPenalty = session.difficulty.statPenalty != 0
-        // Icône alignée sur le picker juste au-dessus : `easy` / `medium`
-        // / `hard` selon la difficulté courante. Évite de mélanger un SF
-        // Symbol générique (checkmark / triangle) avec le pixel-art du
-        // reste de l'UI.
         let icon = difficultyIcon(session.difficulty)
         let tint: Color = hasPenalty ? Theme.blood : Theme.inkFaded
         let text: String = {
@@ -371,13 +343,17 @@ struct CharacterCreationView: View {
     // MARK: - Actions
 
     private var actions: some View {
-        // Le lien "Retour au menu" a été retiré : il ne servait pas à
-        // grand-chose en cours de création (les jets ne sont pas encore
-        // commités tant qu'on n'a pas validé la difficulté) et il
-        // encombrait visuellement la page. `cancelCharacterCreation()`
-        // reste disponible côté session pour les flows internes — juste
-        // pas exposé via un bouton ici.
-        primaryButton
+        VStack(spacing: 8) {
+            primaryButton
+            Button("Retour au menu") {
+                session.cancelCharacterCreation()
+            }
+            .font(Theme.display(11))
+            .foregroundColor(Theme.inkFaded)
+            .padding(.vertical, 8)
+            .frame(maxWidth: .infinity)
+            .minimumTapTarget()
+        }
     }
 
     @ViewBuilder
@@ -455,9 +431,6 @@ struct CharacterCreationView: View {
         scheduleReveal()
     }
 
-    /// Aligne le moment où l'on dévoile le total sur la fin de l'animation
-    /// des dés, comme la `DiceRollOverlay` du combat. Le bouton « Continuer »
-    /// apparaît au même moment.
     private func scheduleReveal() {
         Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(diceDurationMs + 80))
@@ -468,15 +441,8 @@ struct CharacterCreationView: View {
         }
     }
 
-    /// Tap-to-skip : si le total n'est pas encore révélé, on le fait
-    /// apparaître tout de suite. L'animation SceneKit des dés continue
-    /// brièvement (impossible à interrompre), mais le bouton « Continuer »
-    /// se présente immédiatement.
     private func skipReveal() {
         guard !revealed else { return }
-        // Ne déclenche le skip qu'une fois les valeurs effectivement
-        // tirées — sinon l'utilisateur taperait sur des placeholders et
-        // verrait apparaître « — = — » comme totaux.
         let hasValues: Bool = {
             switch phase {
             case .stamina:    return staminaDice != nil
@@ -491,9 +457,6 @@ struct CharacterCreationView: View {
         }
     }
 
-    /// Pousse les trois dés vers la `GameSession` une fois la Chance lancée,
-    /// avant d'afficher la page de difficulté. C'est cette étape qui crée le
-    /// `characterRoll` consommé par `confirmCharacterAndStart`.
     private func finalizeRoll() {
         guard let staminaDice, let skillDie, let luckDie else { return }
         session.setCharacterRoll(

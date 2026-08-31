@@ -1,17 +1,3 @@
-//
-//  Battle.swift
-//  Turn-based combat engine in the Fighting Fantasy style.
-//
-//  Rules applied:
-//   - Each round: 2d6 + Skill for both fighters. Higher attack roll hits for
-//     2 stamina. Tie = parry, no damage.
-//   - After landing a hit: Test Luck for +2 damage on lucky, only 1 damage
-//     on unlucky.
-//   - After taking a hit: Test Luck for -1 damage on lucky, +1 damage on
-//     unlucky.
-//   - Each Luck test reduces Luck by 1 (handled inside `testLuck()`).
-//
-
 import Foundation
 
 // MARK: - Outcome
@@ -48,35 +34,20 @@ struct BattleState {
     var phase: BattlePhase = .awaitingAction
     var log: [BattleLogEntry] = []
     let fleeTarget: String?
-    /// True dès que le joueur a tenté de fuir une fois (qu'il ait réussi ou
-    /// pas). On masque alors le bouton "Tenter de fuir" — pas de seconde
-    /// chance, l'ennemi est sur ses gardes.
     var fleeUsed: Bool = false
-    /// Bonus d'Habileté appliqué au prochain `attack()`, puis consommé.
-    /// Sert aux items combat (witch_fetish, etc.) qui boostent un seul
-    /// round avant d'être perdus.
     var playerSkillBonus: Int = 0
-    /// Pénalité d'Habileté appliquée à l'ennemi au prochain `attack()`,
-    /// puis consommée. Pendant pour les items qui affaiblissent (eau
-    /// bénite, huile noire…).
     var enemySkillPenalty: Int = 0
-    /// Nombre de rounds résolus dans ce combat (incrémenté à chaque appel
-    /// à `BattleEngine.attack`). Sert au succès « Hécatombe » (3 combats
-    /// finis en <6 rounds) et à des stats potentielles.
     var roundCount: Int = 0
 
     init(setup: BattleSetup) {
         self.enemy = setup.enemy
         self.fleeTarget = setup.fleeTarget
-        // No intro line in the log: the enemy card on top already shows
-        // name + Skill + Stamina.
     }
 }
 
 // MARK: - Engine
 
 enum BattleEngine {
-
     // MARK: Variantes de texte
     //
     // Pour éviter la répétition « Tu touches ! X perd 2 points d'Endurance. »
@@ -84,6 +55,14 @@ enum BattleEngine {
     // ci-dessous. Quelques ennemis emblématiques (sanglier, lycanthrope,
     // Mortimer) ont en plus des lignes personnalisées qui passent en
     // priorité — voir `customHitDealt(for:)` / `customHitTaken(for:)`.
+    //
+    // ⚠️ Les `case` doivent reprendre EXACTEMENT les identifiants de
+    // `EnemyCatalog.all`. Trois d'entre eux étaient périmés (`wild_boar`,
+    // `mortimer`, `mortimer_phase2` au lieu de `forest_boar`,
+    // `mortimer_spectre_phase1/2`) : les répliques sur mesure du sanglier
+    // et des deux phases du boss ne se déclenchaient jamais, le combat
+    // retombait silencieusement sur les lignes génériques.
+    // `BattleEngineTests.test_customVariantIdsExistInCatalog` verrouille ça.
 
     private static let hitDealtVariants: [String] = [
         "Tu touches ! {enemy} perd 2 points d'Endurance.",
@@ -121,11 +100,18 @@ enum BattleEngine {
         "Le coup glisse sur l'armure : 1 dégât au lieu de 2."
     ]
 
-    /// Lignes spécifiques quand le joueur touche certains ennemis. Si
-    /// l'`id` n'est pas listé, on retombe sur `hitDealtVariants`.
+    static let customisedEnemyIDs: Set<String> = [
+        "forest_boar",
+        "forest_lycanthrope",
+        "mortimer_spectre_phase1",
+        "mortimer_spectre_phase2",
+        "marsh_serpent",
+        "treasure_guardian"
+    ]
+
     private static func customHitDealt(for enemyID: String) -> [String]? {
         switch enemyID {
-        case "wild_boar":
+        case "forest_boar":
             return [
                 "Tu plantes ta lame dans son flanc. Le sanglier titane recule en grognant. -2 Endurance.",
                 "Le sanglier encaisse et secoue sa hure. -2 Endurance."
@@ -135,7 +121,7 @@ enum BattleEngine {
                 "Ta lame ouvre la fourrure. Le lycanthrope rugit. -2 Endurance.",
                 "Tu trouves une faille entre les griffes. -2 Endurance."
             ]
-        case "mortimer", "mortimer_phase2":
+        case "mortimer_spectre_phase1", "mortimer_spectre_phase2":
             return [
                 "Ta lame coupe l'air froid autour du sorcier. -2 Endurance.",
                 "Mortimer vacille. Sa robe se déchire. -2 Endurance."
@@ -155,10 +141,9 @@ enum BattleEngine {
         }
     }
 
-    /// Lignes spécifiques quand l'ennemi touche le joueur.
     private static func customHitTaken(for enemyID: String) -> [String]? {
         switch enemyID {
-        case "wild_boar":
+        case "forest_boar":
             return [
                 "Le sanglier charge ! Tu prends son boutoir de plein fouet. -{dmg} Endurance.",
                 "Sa hure t'envoie au sol. -{dmg} Endurance."
@@ -168,7 +153,7 @@ enum BattleEngine {
                 "Les griffes du lycanthrope te lacèrent. -{dmg} Endurance.",
                 "Une morsure profonde. -{dmg} Endurance."
             ]
-        case "mortimer", "mortimer_phase2":
+        case "mortimer_spectre_phase1", "mortimer_spectre_phase2":
             return [
                 "Un éclair sombre te frappe en pleine poitrine. -{dmg} Endurance.",
                 "Le souffle spectral du sorcier te glace. -{dmg} Endurance."
@@ -188,9 +173,10 @@ enum BattleEngine {
         }
     }
 
-    /// Choisit une variante aléatoire et remplace les marqueurs `{enemy}`
-    /// et `{dmg}`. Si la liste passée est `nil` ou vide, retombe sur la
-    /// liste générique fournie en `fallback`.
+    static func hasCustomVariants(for enemyID: String) -> Bool {
+        customHitDealt(for: enemyID) != nil && customHitTaken(for: enemyID) != nil
+    }
+
     private static func pickVariant(_ custom: [String]?,
                                      fallback: [String],
                                      enemy: String,
@@ -204,8 +190,6 @@ enum BattleEngine {
         return line
     }
 
-    /// Resolves an attack round. Emits ONE readable log entry, no jargon
-    /// (the numbers are already visible in the dice and the EnemyCard).
     static func attack(state: inout BattleState,
                        player: inout PlayerState,
                        playerRoll: Int? = nil,
@@ -213,9 +197,6 @@ enum BattleEngine {
         state.roundCount += 1
         let pSum = playerRoll ?? roll2d6()
         let eSum = enemyRoll ?? roll2d6()
-        // Modificateurs à usage unique posés par les items combat
-        // (witch_fetish, holy_water, necro_oil). Consommés à chaque
-        // résolution d'attaque pour qu'ils ne durent qu'un round.
         let playerAttack = pSum + player.skill + state.playerSkillBonus
         let enemyAttack  = eSum + max(0, state.enemy.skill - state.enemySkillPenalty)
         state.playerSkillBonus = 0
@@ -231,8 +212,6 @@ enum BattleEngine {
             state.log.append(BattleLogEntry(text: line, kind: .hitDealt))
             transitionAfterPlayerHit(state: &state, player: player)
         } else if enemyAttack > playerAttack {
-            // Dégâts de base = 2, +damageBonus si l'ennemi a une aptitude
-            // offensive (griffes acérées, poigne de pierre…).
             let dmg = 2 + state.enemy.damageBonus
             player.stamina -= dmg
             let line = pickVariant(customHitTaken(for: enemyID),
@@ -248,7 +227,6 @@ enum BattleEngine {
         }
     }
 
-    /// Test Luck after dealing a hit: +2 damage on lucky, -1 damage on unlucky.
     static func tryLuckOffense(state: inout BattleState,
                                player: inout PlayerState,
                                luckRoll: Int? = nil) {
@@ -259,7 +237,6 @@ enum BattleEngine {
             let line = pickVariant(nil, fallback: luckyOffenseVariants, enemy: enemyName)
             state.log.append(BattleLogEntry(text: line, kind: .lucky))
         } else {
-            // Damage reduced to 1: give 1 stamina back to the enemy.
             state.enemy.stamina = min(state.enemy.stamina + 1, state.enemy.staminaMax)
             let line = pickVariant(nil, fallback: unluckyOffenseVariants, enemy: enemyName)
             state.log.append(BattleLogEntry(text: line, kind: .unlucky))
@@ -267,9 +244,6 @@ enum BattleEngine {
         finalizeAfterLuck(state: &state, player: player)
     }
 
-    /// Test Luck after taking a hit: -1 damage on lucky, +1 damage on unlucky.
-    /// Le total dépend du `damageBonus` de l'ennemi : un lycanthrope qui
-    /// passe (+1 base) infligera 2 / 3 / 4 selon le jet de Chance.
     static func tryLuckDefense(state: inout BattleState,
                                player: inout PlayerState,
                                luckRoll: Int? = nil) {
@@ -297,15 +271,10 @@ enum BattleEngine {
         state.phase = .awaitingAction
     }
 
-    /// Attempt to flee: Test Luck. If lucky, leave combat for `fleeTarget`.
-    /// If unlucky, the enemy gets a free hit (2 stamina) while the player
-    /// turns their back.
     static func flee(state: inout BattleState,
                      player: inout PlayerState,
                      luckRoll: Int? = nil) {
         guard let target = state.fleeTarget else { return }
-        // Une seule tentative possible : qu'elle réussisse ou échoue, le
-        // bouton "Tenter de fuir" disparaît ensuite.
         state.fleeUsed = true
         let (lucky, _, _) = player.testLuck(roll: luckRoll)
         if lucky {

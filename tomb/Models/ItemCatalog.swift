@@ -1,55 +1,37 @@
-//
-//  ItemCatalog.swift
-//  Item catalogue: display name + short description for the inventory sheet.
-//
-
 import Foundation
 
-/// Effet déclenché quand le joueur "utilise" un item depuis l'inventaire.
 enum ConsumableEffect: Equatable {
-    case heal(Int)              // +n Endurance, capé au max
-    case restoreLuck            // ramène la Chance à son maximum
-    /// Bonus d'Habileté appliqué au prochain jet d'attaque uniquement
-    /// (modifie BattleState.playerSkillBonus). Utilisable seulement en
-    /// combat, sur `.awaitingAction`.
+    case heal(Int)
+    case restoreLuck
     case boostSkillNextAttack(Int)
-    /// Pénalité d'Habileté pour l'ennemi sur le prochain jet uniquement.
-    /// Idem : utilisable seulement en combat.
     case weakenEnemyNextAttack(Int)
 }
 
-/// Catégorie d'arme équipable. Pour différencier le bonus appliqué quand
-/// elle est portée (le joueur ne tient qu'une seule arme à la fois).
-enum WeaponKind: Equatable {
-    case sharpened      // +1 Habileté
-    case cursed         // +2 Habileté, -1 Chance
-    case assassin       // +1 Chance (lame légère, jets de Chance précis)
+enum WeaponKind: Equatable, CaseIterable {
+    case sharpened
+    case cursed
+    case assassin
+
+    var delta: (skill: Int, luck: Int) {
+        switch self {
+        case .sharpened:
+            return (skill: 1, luck: 0)
+        case .assassin:
+            return (skill: 0, luck: 1)
+        case .cursed:
+            return (skill: 2, luck: -1)
+        }
+    }
 }
 
 enum ItemCatalog {
-
     struct Info {
         let name: String
         let description: String
-        /// SF Symbol used as the row icon. Themed per object so the inventory
-        /// is scannable without reading every line.
         let icon: String
-        /// Optional short label shown as a tag under the description. Use it
-        /// for items that grant an ongoing or already-applied mechanical
-        /// effect ("Affaiblit le spectre", "+1 Habileté permanente"). Nil for
-        /// purely narrative / quest tokens.
         let effect: String?
-        /// Si non-nil, un bouton "Utiliser" apparaît dans l'inventaire. À
-        /// l'usage, l'effet est appliqué et l'item disparaît du sac.
         let consumable: ConsumableEffect?
-        /// Si non-nil, l'item peut être équipé en arme principale (un seul
-        /// slot). Le bonus n'est appliqué que tant que l'arme est portée.
         let weapon: WeaponKind?
-        /// True pour les items dont l'effet a été appliqué immédiatement au
-        /// pickup (bénédictions, sang de basilic, etc.). L'inventaire les
-        /// garde comme trace du parcours mais affiche un chip « Effet
-        /// appliqué » à la place du bouton Utiliser — le joueur sait qu'il
-        /// n'y a rien à faire de plus.
         let bonusAppliedAtPickup: Bool
 
         init(name: String, description: String, icon: String,
@@ -161,8 +143,6 @@ enum ItemCatalog {
             effect: "+30 au score si rapporté"
         ),
 
-        // ----- Forêt (chap. II) -----
-
         "forest_herbs": Info(
             name: "Herbes forestières",
             description: "Une poignée d'achillée et de millepertuis ramassée près des pierres dressées. Mâchées et avalées, elles ralentissent le sang qui coule.",
@@ -196,8 +176,6 @@ enum ItemCatalog {
             effect: "−1 Habileté au spectre"
         ),
 
-        // ----- Donjon (chap. V) -----
-
         "runic_key": Info(
             name: "Rune-clé d'argile",
             description: "Une petite tablette d'argile gravée de trois signes concentriques. Mortimer l'a faite pour ouvrir une porte qu'il voulait scellée à tous les autres.",
@@ -217,8 +195,6 @@ enum ItemCatalog {
             effect: "+1 Chance permanente",
             bonusAppliedAtPickup: true
         ),
-
-        // ----- Roncebrune élargi -----
 
         "priest_blessing": Info(
             name: "Bénédiction du père Cassien",
@@ -255,8 +231,6 @@ enum ItemCatalog {
             effect: "+1 Habileté permanente"
         ),
 
-        // ----- Forêt profonde -----
-
         "cursed_blade": Info(
             name: "Lame trempée chez la sorcière",
             description: "Ton épée est ressortie noire de la marmite de la hutte. Elle coupe l'air d'un sifflement sec. Quelque chose en toi s'est éteint en échange.",
@@ -278,8 +252,6 @@ enum ItemCatalog {
             effect: "+2 Endurance maximum",
             bonusAppliedAtPickup: true
         ),
-
-        // ----- Aile sud du tombeau -----
 
         "pit_signet": Info(
             name: "Bague de fer noire",
@@ -303,8 +275,6 @@ enum ItemCatalog {
         )
     ]
 
-    /// Returns the info for an id, with a sensible fallback if the item is
-    /// not catalogued.
     static func info(_ id: String) -> Info {
         if let info = all[id] { return info }
         let prettyName = id

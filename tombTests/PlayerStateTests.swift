@@ -1,14 +1,7 @@
-//
-//  PlayerStateTests.swift
-//  Couvre `testLuck()` (les jets de Chance hors combat passent par ce
-//  même point) et les accesseurs d'état basiques.
-//
-
 import XCTest
 @testable import tomb
 
 final class PlayerStateTests: XCTestCase {
-
     private func makePlayer(luck: Int = 8) -> PlayerState {
         PlayerState(
             skill: 9, skillMax: 9,

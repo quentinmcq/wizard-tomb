@@ -14,12 +14,18 @@
 		060675682FB751AB001DAC8C /* tomb.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = tomb.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		ABCDEF0123456789ABCDEF03 /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
 		ABCDEF0123456789ABCDEF04 /* .gitignore */ = {isa = PBXFileReference; lastKnownFileType = text; path = .gitignore; sourceTree = "<group>"; };
+		7E5700000000000000000A02 /* tombTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = tombTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		0606756A2FB751AB001DAC8C /* tomb */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = tomb;
+			sourceTree = "<group>";
+		};
+		7E5700000000000000000A03 /* tombTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = tombTests;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -33,6 +39,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		7E5700000000000000000A05 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -42,6 +55,7 @@
 				ABCDEF0123456789ABCDEF03 /* README.md */,
 				ABCDEF0123456789ABCDEF04 /* .gitignore */,
 				0606756A2FB751AB001DAC8C /* tomb */,
+				7E5700000000000000000A03 /* tombTests */,
 				060675692FB751AB001DAC8C /* Products */,
 			);
 			sourceTree = "<group>";
@@ -50,6 +64,7 @@
 			isa = PBXGroup;
 			children = (
 				060675682FB751AB001DAC8C /* tomb.app */,
+				7E5700000000000000000A02 /* tombTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -80,7 +95,48 @@
 			productReference = 060675682FB751AB001DAC8C /* tomb.app */;
 			productType = "com.apple.product-type.application";
 		};
+		7E5700000000000000000A01 /* tombTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 7E5700000000000000000A09 /* Build configuration list for PBXNativeTarget "tombTests" */;
+			buildPhases = (
+				7E5700000000000000000A04 /* Sources */,
+				7E5700000000000000000A05 /* Frameworks */,
+				7E5700000000000000000A06 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				7E5700000000000000000A07 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				7E5700000000000000000A03 /* tombTests */,
+			);
+			name = tombTests;
+			packageProductDependencies = (
+			);
+			productName = tombTests;
+			productReference = 7E5700000000000000000A02 /* tombTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
+
+/* Begin PBXContainerItemProxy section */
+		7E5700000000000000000A08 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 060675602FB751AB001DAC8C /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 060675672FB751AB001DAC8C;
+			remoteInfo = tomb;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXTargetDependency section */
+		7E5700000000000000000A07 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 060675672FB751AB001DAC8C /* tomb */;
+			targetProxy = 7E5700000000000000000A08 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin PBXProject section */
 		060675602FB751AB001DAC8C /* Project object */ = {
@@ -93,6 +149,10 @@
 					060675672FB751AB001DAC8C = {
 						CreatedOnToolsVersion = 26.5;
 						LastSwiftMigration = 2650;
+					};
+					7E5700000000000000000A01 = {
+						CreatedOnToolsVersion = 26.5;
+						TestTargetID = 060675672FB751AB001DAC8C;
 					};
 				};
 			};
@@ -114,6 +174,7 @@
 			projectRoot = "";
 			targets = (
 				060675672FB751AB001DAC8C /* tomb */,
+				7E5700000000000000000A01 /* tombTests */,
 			);
 		};
 /* End PBXProject section */
@@ -126,10 +187,24 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		7E5700000000000000000A06 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		060675642FB751AB001DAC8C /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		7E5700000000000000000A04 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -192,7 +267,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 26.5;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
@@ -250,7 +325,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 26.5;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
@@ -329,6 +404,46 @@
 			};
 			name = Release;
 		};
+		7E5700000000000000000A10 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 4S5B3N4485;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = test.tombTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/tomb.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/tomb";
+			};
+			name = Debug;
+		};
+		7E5700000000000000000A11 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 4S5B3N4485;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = test.tombTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/tomb.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/tomb";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -346,6 +461,15 @@
 			buildConfigurations = (
 				060675742FB751AC001DAC8C /* Debug */,
 				060675752FB751AC001DAC8C /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		7E5700000000000000000A09 /* Build configuration list for PBXNativeTarget "tombTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				7E5700000000000000000A10 /* Debug */,
+				7E5700000000000000000A11 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

@@ -1,16 +1,28 @@
-//
-//  EnemyCatalog.swift
-//  Enemies addressed by identifier. The combat knots in adventure.ink point
-//  at these ids via the `# combat: <id>` tag. The id sert aussi de nom de
-//  fichier pour le portrait illustré (`tomb/Images/<id>.jpg`).
-//
-
 import Foundation
 
 enum EnemyCatalog {
+    static let bestiaryOrder: [String] = [
+        "goblin_scout",
+        "forest_wolves",
+        "forest_boar",
+        "forest_lycanthrope",
+        "forest_lynx",
+        "marsh_serpent",
+        "marsh_wraith",
+        "tomb_ghoul",
+        "skeleton_guardians",
+        "gallery_skeletons",
+        "flooded_eels",
+        "tomb_basilisk",
+        "treasure_guardian",
+        "vengeful_spirit",
+        "pit_skeletons",
+        "mortimer_spectre_phase1",
+        "mortimer_spectre_phase2"
+    ]
 
-    /// Court paragraphe descriptif affiché dans le bestiaire, une fois
-    /// l'ennemi vaincu. Indexé par le même id que `all`.
+    static let bestiaryComplete = Set(bestiaryOrder)
+
     static let lore: [String: String] = [
         "goblin_scout": "Petit rôdeur des sous-bois, vivant de carrioles renversées et de hachettes ébréchées. Tu en as rencontré un seul — il en court bien d'autres.",
         "marsh_serpent": "Reptile gris-vert, long comme deux hommes, qui dort sous la vase et frappe sans avertir. Sa langue mouille le visage avant la morsure.",
@@ -93,8 +105,6 @@ enum EnemyCatalog {
             abilityNote: "Souffle spectral — +1 dégât par coup"
         ),
 
-        // ----- Forêt (chap. II) -----
-
         "forest_wolves": Enemy(
             id: "forest_wolves",
             name: "Meute de loups",
@@ -102,8 +112,6 @@ enum EnemyCatalog {
             skill: 6,
             stamina: 6
         ),
-
-        // ----- Donjon (chap. V) -----
 
         "gallery_skeletons": Enemy(
             id: "gallery_skeletons",
@@ -127,8 +135,6 @@ enum EnemyCatalog {
             stamina: 7
         ),
 
-        // ----- Forêt profonde -----
-
         "forest_boar": Enemy(
             id: "forest_boar",
             name: "Sanglier titanesque",
@@ -148,8 +154,6 @@ enum EnemyCatalog {
             abilityNote: "Griffes acérées — +1 dégât par coup"
         ),
 
-        // ----- Aile sud du tombeau -----
-
         "pit_skeletons": Enemy(
             id: "pit_skeletons",
             name: "Squelettes de la fosse",
@@ -157,8 +161,6 @@ enum EnemyCatalog {
             skill: 8,
             stamina: 8
         ),
-
-        // ----- Ennemis optionnels (chap. II–III) -----
 
         "forest_lynx": Enemy(
             id: "forest_lynx",

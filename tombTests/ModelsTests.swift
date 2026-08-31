@@ -1,16 +1,7 @@
-//
-//  ModelsTests.swift
-//  Sanity-checks sur les enums du domaine — qu'on les considère comme
-//  contrat stable (utilisés dans le fichier .ink, dans les saves, dans
-//  les achievements). Si quelqu'un renomme un `rawValue` par mégarde,
-//  ces tests sautent.
-//
-
 import XCTest
 @testable import tomb
 
 final class ModelsTests: XCTestCase {
-
     // MARK: - FinalOutcome
 
     func test_FinalOutcome_rawValuesStableForInkAndSaves() {
@@ -57,12 +48,6 @@ final class ModelsTests: XCTestCase {
         }
     }
 
-    func test_Chapter_bannerImageNameConvention() {
-        XCTAssertEqual(Chapter.village.bannerImageName, "chapter_village")
-        XCTAssertEqual(Chapter.marsh.bannerImageName, "chapter_marsh")
-        XCTAssertEqual(Chapter.ending.bannerImageName, "chapter_ending")
-    }
-
     // MARK: - StatTooltipKind (sécurise l'icône utilisée)
 
     func test_StatTooltipKind_iconNamesMatchAssets() {
@@ -77,6 +62,40 @@ final class ModelsTests: XCTestCase {
             XCTAssertFalse(kind.summary.isEmpty)
             XCTAssertGreaterThan(kind.detail.count, 40,
                                  "Le détail doit vraiment expliquer (>40 chars)")
+        }
+    }
+
+    // MARK: - Catalogue du bestiaire
+    //
+    // La liste vit désormais dans `EnemyCatalog` et alimente à la fois
+    // l'affichage du bestiaire et la condition du haut fait « Le grand
+    // livre ». Une entrée mal orthographiée rendrait le succès
+    // définitivement inatteignable sans que rien ne le signale.
+
+    func test_bestiaryOrder_referencesOnlyRealEnemies() {
+        for id in EnemyCatalog.bestiaryOrder {
+            XCTAssertNotNil(EnemyCatalog.all[id],
+                            "\(id) est listé au bestiaire mais absent du catalogue")
+        }
+    }
+
+    func test_bestiaryOrder_hasNoDuplicates() {
+        XCTAssertEqual(EnemyCatalog.bestiaryOrder.count,
+                       EnemyCatalog.bestiaryComplete.count,
+                       "Doublon dans l'ordre du bestiaire")
+    }
+
+    func test_bestiaryOrder_coversEveryCatalogueEnemy() {
+        let missing = Set(EnemyCatalog.all.keys)
+            .subtracting(EnemyCatalog.bestiaryComplete)
+        XCTAssertTrue(missing.isEmpty,
+                      "Ennemis du catalogue absents du bestiaire : \(missing.sorted())")
+    }
+
+    func test_everyBestiaryEnemyHasLore() {
+        for id in EnemyCatalog.bestiaryOrder {
+            XCTAssertFalse((EnemyCatalog.lore[id] ?? "").isEmpty,
+                           "Paragraphe de bestiaire manquant pour \(id)")
         }
     }
 }

@@ -1,10 +1,3 @@
-//
-//  StatBadgeView.swift
-//  Un badge de stat du HUD : icône + valeur (avec fraction max optionnelle),
-//  pulsation rouge quand la valeur passe sous un seuil critique, et popover
-//  explicatif au tap. Extrait de `ContentView.swift` pour lisibilité.
-//
-
 import SwiftUI
 
 // MARK: - Une stat du HUD (icône + valeur, avec pulsation si critique)
@@ -14,25 +7,13 @@ struct StatBadge: View {
     let value: Int
     let max: Int
     let color: Color
-    /// Si la valeur descend à ce seuil (ou en dessous), la stat pulse pour
-    /// alerter le joueur. `nil` = pas d'alerte (ex. Habileté).
     let criticalThreshold: Int?
     let accessibility: String
-    /// True = afficher la fraction `value/max`. False = juste `value`
-    /// (utile pour l'Habileté où current et max sont toujours égaux —
-    /// les bonus permanents montent les deux, jamais l'un sans l'autre,
-    /// donc la fraction est du bruit).
     var showsMax: Bool = true
 
     @State private var pulse: Bool = false
-    /// Différence du dernier changement de valeur, pour afficher un
-    /// floater +N / -N qui s'envole. Reset à nil après l'animation.
     @State private var delta: Int? = nil
     @State private var deltaToken: UUID = UUID()
-    /// Tap sur un badge → popover explicatif (« Habileté : ta dextérité au
-    /// combat, ajoutée à chaque jet d'attaque… »). Aide les nouveaux
-    /// joueurs à comprendre ce que représente chaque chiffre sans avoir
-    /// à fouiller dans une page d'aide.
     @State private var showsTooltip: Bool = false
 
     private var isCritical: Bool {
@@ -40,11 +21,6 @@ struct StatBadge: View {
         return value <= threshold && value > 0
     }
 
-    /// Valeur affichée, clampée à 0 pour éviter les chiffres négatifs
-    /// (cas typique : on subit 4 dégâts à 2 PV, stamina passe à -2 avant
-    /// que le moteur déclenche la mort → le HUD affichait "-2" pendant
-    /// une frame). Le calcul du critical et la mort restent basés sur
-    /// la vraie `value`, seul l'affichage est clampé.
     private var displayValue: Int { Swift.max(0, value) }
 
     var body: some View {
@@ -52,11 +28,11 @@ struct StatBadge: View {
             StatGlyph(icon: icon, color: color.opacity(0.75), size: 11)
             HStack(alignment: .firstTextBaseline, spacing: 2) {
                 Text("\(displayValue)")
-                    .font(.system(size: 16, weight: .bold, design: .serif))
+                    .font(Theme.serif(16, weight: .bold, maxScale: 1.3))
                     .foregroundColor(color)
                 if showsMax {
                     Text("/\(max)")
-                        .font(.system(size: 10, weight: .regular, design: .serif))
+                        .font(Theme.serif(10, maxScale: 1.3))
                         .foregroundColor(Theme.inkFaded)
                 }
             }
@@ -64,12 +40,11 @@ struct StatBadge: View {
         .frame(minWidth: 38)
         .opacity(isCritical && pulse ? 0.55 : 1.0)
         .scaleEffect(isCritical && pulse ? 0.96 : 1.0)
-        // Floater +N / -N animé au-dessus du badge quand la stat varie.
         .overlay(alignment: .top) {
             if let d = delta {
                 Text(d > 0 ? "+\(d)" : "\(d)")
                     .font(.system(size: 11, weight: .bold, design: .serif))
-                    .foregroundColor(d > 0 ? Theme.oldGold : Theme.blood)
+                    .foregroundColor(d > 0 ? Theme.goldInk : Theme.blood)
                     .shadow(color: Theme.ink.opacity(0.4), radius: 2, x: 0, y: 1)
                     .id(deltaToken)
                     .transition(.asymmetric(
@@ -88,7 +63,6 @@ struct StatBadge: View {
             withAnimation(.easeOut(duration: 0.3)) {
                 delta = diff
             }
-            // Disparition différée du floater au bout d'1.1 s.
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.1) {
                 if delta == diff {
                     withAnimation(.easeIn(duration: 0.25)) {
@@ -113,10 +87,6 @@ struct StatBadge: View {
         }
     }
 
-    /// Stat sémantique déduite de l'icône — l'icône est notre source de
-    /// vérité pour `ability` / `life` / `luck`. Permet de rendre le
-    /// tooltip indépendant du label d'accessibilité (qui pourrait être
-    /// localisé un jour).
     private var tooltipStat: StatTooltipKind {
         switch icon {
         case "ability": return .skill
@@ -141,8 +111,6 @@ struct StatBadge: View {
 
 // MARK: - Tooltip de stat (explication au tap)
 
-/// Trois stats principales exposées dans le HUD. Sert à router le tooltip
-/// vers le bon texte.
 enum StatTooltipKind {
     case skill, stamina, luck
 
@@ -162,7 +130,6 @@ enum StatTooltipKind {
         }
     }
 
-    /// Phrase ramassée : ce que la stat MESURE.
     var summary: String {
         switch self {
         case .skill:
@@ -174,7 +141,6 @@ enum StatTooltipKind {
         }
     }
 
-    /// Explication plus longue : comment la stat est utilisée et ce qui la fait varier.
     var detail: String {
         switch self {
         case .skill:
@@ -187,9 +153,6 @@ enum StatTooltipKind {
     }
 }
 
-/// Carte parchemin affichée en popover quand le joueur tape un
-/// `StatBadge`. Titre + icône colorée, résumé en italique, puis détail
-/// en corps plus discret.
 private struct StatTooltipCard: View {
     let stat: StatTooltipKind
     let accent: Color
@@ -199,7 +162,7 @@ private struct StatTooltipCard: View {
             HStack(spacing: 8) {
                 StatGlyph(icon: stat.icon, color: accent, size: 14)
                 Text(stat.title)
-                    .font(.system(size: 16, weight: .semibold, design: .serif))
+                    .font(Theme.serif(16, weight: .semibold))
                     .foregroundColor(Theme.ink)
             }
             Text(stat.summary)

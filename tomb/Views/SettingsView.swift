@@ -1,16 +1,11 @@
-//
-//  SettingsView.swift
-//  Écran de réglages accessible depuis le menu. Préférences audio
-//  persistées via UserDefaults (cf. AmbientAudio), suppression de la
-//  sauvegarde en cours, et infos de version.
-//
-
 import SwiftUI
 
 struct SettingsView: View {
     @ObservedObject var session: GameSession
     @ObservedObject var audio: AmbientAudio
     @Environment(\.dismiss) private var dismiss
+
+    @State private var showingDeleteConfirm = false
 
     var body: some View {
         NavigationStack {
@@ -19,11 +14,21 @@ struct SettingsView: View {
                 ScrollView {
                     VStack(spacing: 22) {
                         audioSection
+                        if session.hasSavedGame { saveSection }
                         aboutSection
                         creditsSection
                     }
                     .padding(20)
                 }
+            }
+            .alert("Effacer la sauvegarde ?", isPresented: $showingDeleteConfirm) {
+                Button("Annuler", role: .cancel) {}
+                Button("Effacer", role: .destructive) {
+                    session.deleteSave()
+                    dismiss()
+                }
+            } message: {
+                Text("La partie en cours sera définitivement perdue. Tes hauts faits, ton bestiaire et les fins déjà découvertes sont conservés.")
             }
             .navigationTitle("Réglages")
             .navigationBarTitleDisplayMode(.inline)
@@ -40,10 +45,6 @@ struct SettingsView: View {
 
     private var audioSection: some View {
         SettingsSection(title: "Audio") {
-            // Une seule rangée par catégorie : icône + label + toggle
-            // sur la ligne du haut, slider de volume juste en dessous
-            // (grisé et inactif quand le toggle est off). Plus compact
-            // que l'ancien layout 4 rangées + 2 icônes redondantes.
             SettingsAudioRow(
                 icon: "sound",
                 iconTint: Theme.inkBlue,
@@ -64,10 +65,38 @@ struct SettingsView: View {
         }
     }
 
-    // La section « Sauvegarde » a été retirée — elle faisait doublon avec
-    // le bouton « Nouvelle partie » du menu principal (qui écrase la save
-    // en repartant à zéro). Pour effacer manuellement, on passe par
-    // « Nouvelle partie » → création de personnage → confirmation.
+    // MARK: - Sauvegarde
+
+    private var saveSection: some View {
+        SettingsSection(title: "Sauvegarde") {
+            Button {
+                showingDeleteConfirm = true
+            } label: {
+                HStack(spacing: 12) {
+                    Theme.icon("delete_save", size: 14, color: Theme.blood)
+                        .frame(width: 22)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Effacer la sauvegarde")
+                            .font(Theme.display(13))
+                            .foregroundColor(Theme.blood)
+                        Text("La partie en cours sera perdue. La méta-progression est conservée.")
+                            .font(Theme.body(12))
+                            .italic()
+                            .foregroundColor(Theme.inkFaded)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .multilineTextAlignment(.leading)
+                    }
+                    Spacer(minLength: 0)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.vertical, 12)
+                .padding(.horizontal, 14)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint("Ouvre une confirmation avant d'effacer.")
+        }
+    }
 
     // MARK: - À propos
 
@@ -90,9 +119,6 @@ struct SettingsView: View {
 
     // MARK: - Crédits
 
-    /// Attribution des assets audio. "Domain of the Specter" est sous CC-BY
-    /// 3.0 et requiert le crédit ; les autres morceaux sous CC0 sont cités par
-    /// politesse et pour faciliter le suivi de licence.
     private var creditsSection: some View {
         SettingsSection(title: "Crédits") {
             VStack(alignment: .leading, spacing: 8) {
@@ -132,7 +158,6 @@ struct SettingsView: View {
 
 // MARK: - Section / Row réutilisables
 
-/// Carte parchemin titrée. Le titre flotte en small-caps au-dessus du cadre.
 private struct SettingsSection<Content: View>: View {
     let title: String
     @ViewBuilder var content: Content
@@ -168,10 +193,6 @@ private struct SettingsDivider: View {
     }
 }
 
-/// Rangée audio combinée : toggle inline + slider de volume juste en
-/// dessous. Quand le toggle est off, le slider est grisé et désactivé —
-/// signale visuellement la relation parent/enfant entre les deux
-/// contrôles sans gaspiller une rangée séparée.
 private struct SettingsAudioRow: View {
     let icon: String
     let iconTint: Color
@@ -182,7 +203,6 @@ private struct SettingsAudioRow: View {
 
     var body: some View {
         VStack(spacing: 8) {
-            // Ligne 1 : icône + label/hint + toggle
             HStack(spacing: 12) {
                 Theme.icon(icon, size: 14, color: iconTint)
                     .frame(width: 22)
@@ -203,10 +223,8 @@ private struct SettingsAudioRow: View {
                     .tint(Theme.blood)
             }
 
-            // Ligne 2 : slider de volume, indenté pour rester visuellement
-            // sous le label. Grisé/désactivé quand le toggle est off.
             HStack(spacing: 12) {
-                Color.clear.frame(width: 22, height: 1)  // align avec l'icône au-dessus
+                Color.clear.frame(width: 22, height: 1)
                 Slider(value: $volume, in: 0...1)
                     .tint(iconTint)
                     .disabled(!isOn)
@@ -223,7 +241,3 @@ private struct SettingsAudioRow: View {
     }
 }
 
-// `SettingsToggleRow` et `SettingsVolumeRow` ont été remplacés par
-// `SettingsAudioRow` (cf. plus haut), qui combine toggle + slider en une
-// seule rangée pour aérer la section Audio. Conservés ailleurs si jamais
-// on les ressort, sinon Git les retrouvera dans l'historique.

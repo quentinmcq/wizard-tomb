@@ -1,19 +1,9 @@
-//
-//  BattleEngineTests.swift
-//  Couvre la logique pure du moteur de combat. Aucun random direct :
-//  toutes les valeurs de dés sont injectées via les paramètres optionnels
-//  des méthodes du moteur (`playerRoll`, `enemyRoll`, `luckRoll`) pour
-//  garantir des assertions déterministes.
-//
-
 import XCTest
 @testable import tomb
 
 final class BattleEngineTests: XCTestCase {
-
     // MARK: - Helpers
 
-    /// Joueur basique pour les scénarios : Habileté 9, Endurance 20, Chance 8.
     private func makePlayer(skill: Int = 9,
                             stamina: Int = 20,
                             luck: Int = 8) -> PlayerState {
@@ -24,7 +14,6 @@ final class BattleEngineTests: XCTestCase {
         )
     }
 
-    /// Ennemi standard : Habileté 7, Endurance 6, pas de bonus.
     private func makeEnemy(skill: Int = 7,
                            stamina: Int = 6,
                            damageBonus: Int = 0) -> Enemy {
@@ -41,8 +30,8 @@ final class BattleEngineTests: XCTestCase {
     // MARK: - Attack
 
     func test_attack_playerWins_dealsTwoDamageAndOffersLuck() {
-        var player = makePlayer()         // skill 9 → total 9 + 12 = 21
-        var battle = makeBattle(makeEnemy()) // skill 7 → total 7 + 4  = 11
+        var player = makePlayer()
+        var battle = makeBattle(makeEnemy())
         BattleEngine.attack(state: &battle, player: &player,
                             playerRoll: 12, enemyRoll: 4)
 
@@ -52,8 +41,8 @@ final class BattleEngineTests: XCTestCase {
     }
 
     func test_attack_enemyWins_dealsTwoDamageAndOffersLuckDefense() {
-        var player = makePlayer()          // skill 9 → total 9 + 4 = 13
-        var battle = makeBattle(makeEnemy()) // skill 7 → total 7 + 12 = 19
+        var player = makePlayer()
+        var battle = makeBattle(makeEnemy())
         BattleEngine.attack(state: &battle, player: &player,
                             playerRoll: 4, enemyRoll: 12)
 
@@ -65,9 +54,8 @@ final class BattleEngineTests: XCTestCase {
     func test_attack_tie_noDamage_returnsToAwaiting() {
         var player = makePlayer()
         var battle = makeBattle(makeEnemy())
-        // Même somme côté joueur et ennemi → égalité → parade.
         BattleEngine.attack(state: &battle, player: &player,
-                            playerRoll: 5, enemyRoll: 7)  // 5+9=14 / 7+7=14
+                            playerRoll: 5, enemyRoll: 7)
 
         XCTAssertEqual(player.stamina, 20)
         XCTAssertEqual(battle.enemy.stamina, 6)
@@ -76,7 +64,6 @@ final class BattleEngineTests: XCTestCase {
 
     func test_attack_killingBlow_endsInVictory() {
         var player = makePlayer()
-        // Ennemi sur 2 PV : un coup réussi le finit.
         var battle = makeBattle(makeEnemy(stamina: 2))
         BattleEngine.attack(state: &battle, player: &player,
                             playerRoll: 12, enemyRoll: 2)
@@ -86,7 +73,6 @@ final class BattleEngineTests: XCTestCase {
     }
 
     func test_attack_killingPlayer_endsInDefeat() {
-        // Joueur sur 2 PV : un coup ennemi le tue.
         var player = makePlayer(stamina: 2)
         var battle = makeBattle(makeEnemy())
         BattleEngine.attack(state: &battle, player: &player,
@@ -97,7 +83,6 @@ final class BattleEngineTests: XCTestCase {
     }
 
     func test_attack_damageBonusAppliedOnEnemyHit() {
-        // Ennemi avec damageBonus +1 (lycanthrope) → 3 dégâts/coup.
         var player = makePlayer()
         var battle = makeBattle(makeEnemy(damageBonus: 1))
         BattleEngine.attack(state: &battle, player: &player,
@@ -111,7 +96,6 @@ final class BattleEngineTests: XCTestCase {
     func test_tryLuckOffense_lucky_dealsTwoExtraDamage() {
         var player = makePlayer(luck: 8)
         var battle = makeBattle(makeEnemy(stamina: 6))
-        // Le moteur d'attaque vient juste de retirer 2 PV à l'ennemi.
         battle.enemy.stamina = 4
         BattleEngine.tryLuckOffense(state: &battle, player: &player, luckRoll: 5)
 
@@ -133,7 +117,7 @@ final class BattleEngineTests: XCTestCase {
     // MARK: - Luck defense
 
     func test_tryLuckDefense_lucky_savesOnePoint() {
-        var player = makePlayer(luck: 8, stamina: 18)  // vient d'encaisser 2 PV
+        var player = makePlayer(stamina: 18, luck: 8)
         var battle = makeBattle(makeEnemy())
         BattleEngine.tryLuckDefense(state: &battle, player: &player, luckRoll: 5)
 
@@ -142,7 +126,7 @@ final class BattleEngineTests: XCTestCase {
     }
 
     func test_tryLuckDefense_unlucky_costsOneMorePoint() {
-        var player = makePlayer(luck: 3, stamina: 18)
+        var player = makePlayer(stamina: 18, luck: 3)
         var battle = makeBattle(makeEnemy())
         BattleEngine.tryLuckDefense(state: &battle, player: &player, luckRoll: 12)
 
@@ -172,7 +156,7 @@ final class BattleEngineTests: XCTestCase {
     }
 
     func test_flee_unlucky_takesFreeHitAndStaysInCombat() {
-        var player = makePlayer(luck: 3, stamina: 18)
+        var player = makePlayer(stamina: 18, luck: 3)
         var battle = makeBattle(makeEnemy(), fleeTarget: "elsewhere")
         BattleEngine.flee(state: &battle, player: &player, luckRoll: 12)
 
@@ -182,12 +166,31 @@ final class BattleEngineTests: XCTestCase {
     }
 
     func test_flee_unluckyAndKills_endsInDefeat() {
-        var player = makePlayer(luck: 3, stamina: 2)
+        var player = makePlayer(stamina: 2, luck: 3)
         var battle = makeBattle(makeEnemy(), fleeTarget: "elsewhere")
         BattleEngine.flee(state: &battle, player: &player, luckRoll: 12)
 
         XCTAssertLessThanOrEqual(player.stamina, 0)
         XCTAssertEqual(battle.phase, .ended(.defeat))
+    }
+
+    // MARK: - Variantes de texte
+
+    // ⚠️ Régression : `wild_boar`, `mortimer` et `mortimer_phase2` ne
+    // correspondaient à aucune entrée du catalogue, donc les répliques sur
+    // mesure du sanglier et des deux phases du boss ne se déclenchaient
+    // jamais — le combat retombait en silence sur les lignes génériques.
+    func test_customVariantIdsExistInCatalog() {
+        for id in BattleEngine.customisedEnemyIDs {
+            XCTAssertNotNil(EnemyCatalog.all[id],
+                            "\(id) a des répliques sur mesure mais n'existe pas au catalogue")
+            XCTAssertTrue(BattleEngine.hasCustomVariants(for: id),
+                          "\(id) devrait avoir des répliques des deux côtés")
+        }
+    }
+
+    func test_enemiesWithoutCustomVariantsFallBackToGenericLines() {
+        XCTAssertFalse(BattleEngine.hasCustomVariants(for: "goblin_scout"))
     }
 
     func test_flee_withoutTarget_isNoOp() {
@@ -205,9 +208,8 @@ final class BattleEngineTests: XCTestCase {
     func test_attack_consumesPlayerSkillBonus() {
         var player = makePlayer(skill: 6)
         var battle = makeBattle(makeEnemy(skill: 7))
-        battle.playerSkillBonus = 5     // boost transitoire
+        battle.playerSkillBonus = 5
 
-        // Avec le boost : 6 + 5 + 6 = 17 vs 7 + 6 = 13 → joueur gagne.
         BattleEngine.attack(state: &battle, player: &player,
                             playerRoll: 6, enemyRoll: 6)
         XCTAssertEqual(battle.enemy.stamina, 4)
@@ -217,9 +219,8 @@ final class BattleEngineTests: XCTestCase {
     func test_attack_consumesEnemySkillPenalty() {
         var player = makePlayer(skill: 7)
         var battle = makeBattle(makeEnemy(skill: 9))
-        battle.enemySkillPenalty = 4    // huile / eau bénite
+        battle.enemySkillPenalty = 4
 
-        // Joueur : 6 + 7 = 13 ; ennemi : max(0, 9 - 4) + 6 = 11 → joueur gagne.
         BattleEngine.attack(state: &battle, player: &player,
                             playerRoll: 6, enemyRoll: 6)
         XCTAssertEqual(battle.enemy.stamina, 4)

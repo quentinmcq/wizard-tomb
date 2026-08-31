@@ -1,9 +1,3 @@
-//
-//  EffectBurstView.swift
-//  Encart central qui surgit pour annoncer un effet majeur (gain d'objet,
-//  bonus permanent...). Spring d'entrée, halo coloré, puis auto-dismiss.
-//
-
 import SwiftUI
 
 struct EffectBurst: Identifiable {
@@ -21,14 +15,11 @@ struct EffectBurstView: View {
 
     var body: some View {
         VStack(spacing: 10) {
-            // Theme.icon(...) intercepte "heart.fill" pour utiliser l'asset
-            // pixel-art ; le shadow doré reste appliqué dans tous les cas
-            // pour l'effet "ça-brille" du gain.
             Theme.icon(burst.icon, size: 40, color: burst.tint)
                 .shadow(color: burst.tint.opacity(0.55), radius: 8, x: 0, y: 0)
 
             Text(burst.title)
-                .font(.system(size: 20, weight: .bold, design: .serif))
+                .font(Theme.serif(20, weight: .bold))
                 .foregroundColor(Theme.ink)
                 .multilineTextAlignment(.center)
 
@@ -43,9 +34,6 @@ struct EffectBurstView: View {
         .padding(.vertical, 22)
         .padding(.horizontal, 30)
         .background(
-            // Fond complètement opaque pour ne plus laisser transparaître
-            // le texte du parchemin derrière (la popin paraissait aplatie
-            // contre la page sinon).
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .fill(Theme.parchmentLight)
         )
@@ -53,9 +41,6 @@ struct EffectBurstView: View {
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .stroke(burst.tint.opacity(0.75), lineWidth: 1.6)
         )
-        // Double ombre : une vraie drop shadow ink (décollée du fond) + un
-        // halo tinté plus large pour l'effet "ça brille". L'ink détache la
-        // popin du parchemin, la teinte ajoute la magie.
         .shadow(color: Theme.ink.opacity(0.55), radius: 18, x: 0, y: 10)
         .shadow(color: burst.tint.opacity(0.45), radius: 22, x: 0, y: 0)
         .scaleEffect(appeared ? 1.0 : 0.6)
@@ -66,6 +51,11 @@ struct EffectBurstView: View {
             }
         }
         .allowsHitTesting(false)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel([burst.title, burst.subtitle]
+            .compactMap { $0 }
+            .joined(separator: " : "))
+        .accessibilityAddTraits(.isStaticText)
     }
 }
 
@@ -98,12 +88,11 @@ struct NarrativeLuckOverlay: View {
                             .foregroundColor(Theme.inkFaded)
                             .monospacedDigit()
                         Text(roll.lucky ? "Chanceux !" : "Malchanceux")
-                            .font(.system(size: 22, weight: .bold, design: .serif))
-                            .foregroundColor(roll.lucky ? Theme.oldGold : Theme.blood)
+                            .font(Theme.serif(22, weight: .bold))
+                            .foregroundColor(roll.lucky ? Theme.goldInk : Theme.blood)
                     }
                     .transition(.opacity.combined(with: .scale(scale: 0.6)))
                 } else {
-                    // Réserve la place pour éviter le saut.
                     Text("Chanceux !")
                         .font(.system(size: 22, weight: .bold, design: .serif))
                         .foregroundColor(.clear)
@@ -124,6 +113,11 @@ struct NarrativeLuckOverlay: View {
         .scaleEffect(appeared ? 1.0 : 0.7)
         .opacity(appeared ? 1.0 : 0)
         .allowsHitTesting(false)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(
+            "Test de Chance. \(roll.dice.0 + roll.dice.1) contre \(roll.threshold). "
+            + (roll.lucky ? "Chanceux." : "Malchanceux.")
+        )
         .onAppear {
             withAnimation(.spring(response: 0.4, dampingFraction: 0.6)) {
                 appeared = true

@@ -1,6 +1,59 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
-    "config:recommended"
+    "config:recommended",
+    ":semanticCommitTypeAll(chore)"
+  ],
+  "timezone": "Europe/Paris",
+  "labels": ["dependencies"],
+  "ignorePaths": [
+    "build/**",
+    ".claude/**",
+    "**/Package.resolved"
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Versions SPM déclarées dans project.pbxproj",
+      "managerFilePatterns": ["/^tomb\\.xcodeproj/project\\.pbxproj$/"],
+      "matchStrings": [
+        "repositoryURL = \"(?<packageName>https://github\\.com/[^\"]+?)(?:\\.git)?\";\\s*requirement = \\{[^}]*?minimumVersion = (?<currentValue>\\d+\\.\\d+\\.\\d+);"
+      ],
+      "datasourceTemplate": "git-tags",
+      "versioningTemplate": "semver"
+    }
+  ],
+  "packageRules": [
+    {
+      "description": "Moteur narratif (InkSwift, JS JXKit)",
+      "groupName": "moteur narratif (Ink)",
+      "groupSlug": "ink-engine",
+      "matchPackageNames": [
+        "https://github.com/maartene/InkSwift",
+        "https://github.com/jectivex/JXKit"
+      ],
+      "matchUpdateTypes": ["minor", "patch"],
+      "semanticCommitScope": "ink",
+      "automerge": true
+    },
+    {
+      "description": "Versions majeures du moteur narratif",
+      "groupName": "moteur narratif (Ink) — Majeure",
+      "groupSlug": "ink-engine-major",
+      "matchPackageNames": [
+        "https://github.com/maartene/InkSwift",
+        "https://github.com/jectivex/JXKit"
+      ],
+      "matchUpdateTypes": ["major"],
+      "semanticCommitScope": "ink"
+    },
+    {
+      "description": "GitHub Actions",
+      "groupName": "github actions",
+      "matchManagers": ["github-actions"],
+      "pinDigests": true,
+      "automerge": true,
+      "matchUpdateTypes": ["minor", "patch", "digest"]
+    }
   ]
 }

@@ -1,48 +1,34 @@
-//
-//  AchievementsCatalog.swift
-//  Hauts faits débloquables par le joueur au fil des parties. La progression
-//  est persistée dans `GameSession.unlockedAchievements` (méta-progression,
-//  survit aux runs). Une notification "burst" s'affiche au déblocage.
-//
-
 import Foundation
 
 struct Achievement: Identifiable, Equatable, Hashable {
     let id: String
-    /// Titre court affiché en gros, façon « Pacifiste ».
     let title: String
-    /// Phrase descriptive d'une ligne, visible après déblocage.
     let description: String
-    /// SF Symbol affiché dans la liste (icône doré quand débloqué).
     let icon: String
-    /// Indice montré quand le haut fait est encore caché. Court, énigmatique.
     let hint: String
 }
 
 enum AchievementsCatalog {
-
-    /// IDs : préfixés pour éviter toute collision UserDefaults.
     enum ID {
         static let firstBlood       = "ach.first_blood"
         static let pacifist         = "ach.pacifist"
         static let ironMan          = "ach.iron_man"
         static let collector        = "ach.collector"
-        static let cartographer     = "ach.cartographer"   // toutes les fins
+        static let cartographer     = "ach.cartographer"
         static let bestiaryFull     = "ach.bestiary_full"
         static let rich             = "ach.rich"
         static let survivor         = "ach.survivor"
         static let legend           = "ach.legend"
-        static let triadOfHerald    = "ach.triad"          // 3 protections vs spectre
-        static let cursedAndProud   = "ach.cursed_proud"   // finir avec cursed_blade équipée
-        static let widowsPromise    = "ach.widows_promise" // chaîne rendue
-        static let mortimerSeesYou  = "ach.mortimer_eyes"  // voice_defy + victoire
-        static let perfectRun       = "ach.perfect_run"    // Endurance >= 90% à la fin honor
-        // Tiers intermédiaires et nouveaux défis
-        static let threeEndings     = "ach.three_endings"  // 3 fins découvertes (vs 5 cartographer)
-        static let bestiaryHalf     = "ach.bestiary_half"  // 10 ennemis répertoriés
-        static let speedrunner      = "ach.speedrunner"    // fin atteinte en <20 min
-        static let tombeauRevisited = "ach.tombeau_revisited" // 3 runs complets cumulés
-        static let hecatomb         = "ach.hecatomb"       // 3 combats en moins de 6 rounds chacun (même run)
+        static let triadOfHerald    = "ach.triad"
+        static let cursedAndProud   = "ach.cursed_proud"
+        static let widowsPromise    = "ach.widows_promise"
+        static let mortimerSeesYou  = "ach.mortimer_eyes"
+        static let perfectRun       = "ach.perfect_run"
+        static let threeEndings     = "ach.three_endings"
+        static let bestiaryHalf     = "ach.bestiary_half"
+        static let speedrunner      = "ach.speedrunner"
+        static let tombeauRevisited = "ach.tombeau_revisited"
+        static let hecatomb         = "ach.hecatomb"
     }
 
     static let all: [Achievement] = [
@@ -144,7 +130,6 @@ enum AchievementsCatalog {
             icon: "sparkles",
             hint: "Trois forces alignées dans une main droite."
         ),
-        // ----- Tiers intermédiaires & nouveaux défis -----
         Achievement(
             id: ID.threeEndings,
             title: "Trois chemins",
