@@ -11,10 +11,10 @@ final class AmbientAudio: ObservableObject {
     private static let kAmbientVolume = "tomb.audio.ambient_vol"
     private static let kEffectsVolume = "tomb.audio.effects_vol"
 
-    private static let mixFormat = AVAudioFormat(standardFormatWithSampleRate: 44_100,
+    nonisolated private static let mixFormat = AVAudioFormat(standardFormatWithSampleRate: 44_100,
                                                   channels: 2)!
 
-    private static let eventFileNames: [SoundEvent: String] = [
+    nonisolated private static let eventFileNames: [SoundEvent: String] = [
         .gainItem: "item_gem_02",
         .hitDealt: "blade_01",
         .takeHit:  "metal_01",
@@ -67,6 +67,11 @@ final class AmbientAudio: ObservableObject {
 
     private var crossfadeTask: Task<Void, Never>?
 
+    /// Faux tant que le bootstrap audio n'a pas rendu ses objets.
+    private var isReady = false
+    /// `start()` appelé avant la fin du bootstrap : rejoué à l'arrivée.
+    private var startRequested = false
+
     // MARK: - Effets courts (engine + pool)
 
     private let engine = AVAudioEngine()
@@ -84,10 +89,6 @@ final class AmbientAudio: ObservableObject {
         self.ambientVolume = (defs.object(forKey: Self.kAmbientVolume) as? Float) ?? 1.0
         self.effectsVolume = (defs.object(forKey: Self.kEffectsVolume) as? Float) ?? 1.0
 
-        ambientPlayer = Self.makeLoopingPlayer(named: "dungeon_ambient")
-            ?? Self.makeProceduralDronePlayer()
-        battlePlayer = Self.makeLoopingPlayer(named: "combat_music")
-
         for _ in 0..<3 {
             let p = AVAudioPlayerNode()
             engine.attach(p)
@@ -96,22 +97,80 @@ final class AmbientAudio: ObservableObject {
             eventPlayers.append(p)
         }
 
-        for event in SoundEvent.allCases {
-            if let name = Self.eventFileNames[event],
-               let buf = Self.loadBundleBuffer(name) {
-                eventBuffers[event] = buf
-            } else {
-                eventBuffers[event] = SoundSynth.buffer(for: event, format: Self.mixFormat)
+        bootstrap()
+    }
+
+    /// ⚠️ Tout ce qui touche `AVAudioSession` ou construit un `AVAudioPlayer`
+    /// doit rester HORS du thread principal. Ces appels font de l'IPC
+    /// synchrone vers le démon audio : sur le main thread, Xcode lève le
+    /// diagnostic « AVAudioSession Hang Risk » (4 occurrences au lancement)
+    /// et le démarrage peut se figer brièvement.
+    ///
+    /// On passe par GCD et non par `Task.detached` : le projet compile avec
+    /// SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor, donc le corps d'une Task
+    /// non annotée est isolé sur le main actor et y retournerait aussitôt.
+    ///
+    /// Le décodage des effets courts est embarqué dans le même passage : ce
+    /// sont 14 fichiers à lire, autant ne pas le faire pendant le lancement.
+    private func bootstrap() {
+        DispatchQueue.global(qos: .userInitiated).async {
+            let session = AVAudioSession.sharedInstance()
+            do {
+                try session.setCategory(.ambient, mode: .default,
+                                        options: [.mixWithOthers])
+                try session.setActive(true)
+            } catch {
+                #if DEBUG
+                print("[AmbientAudio] session error: \(error)")
+                #endif
+            }
+
+            let ambient = Self.makeLoopingPlayer(named: "dungeon_ambient")
+                ?? Self.makeProceduralDronePlayer()
+            let battle = Self.makeLoopingPlayer(named: "combat_music")
+
+            var buffers: [SoundEvent: AVAudioPCMBuffer] = [:]
+            for event in SoundEvent.allCases {
+                if let name = Self.eventFileNames[event],
+                   let buf = Self.loadBundleBuffer(name) {
+                    buffers[event] = buf
+                } else {
+                    buffers[event] = SoundSynth.buffer(for: event,
+                                                       format: Self.mixFormat)
+                }
+            }
+
+            DispatchQueue.main.async {
+                self.finishBootstrap(ambient: ambient, battle: battle,
+                                     buffers: buffers)
             }
         }
+    }
 
-        configureAudioSession()
+    /// Reçoit les objets audio construits en tâche de fond et rejoue une
+    /// demande de lecture arrivée trop tôt (le menu appelle `start()` dans
+    /// son `onAppear`, potentiellement avant la fin du bootstrap).
+    private func finishBootstrap(ambient: AVAudioPlayer?,
+                                 battle: AVAudioPlayer?,
+                                 buffers: [SoundEvent: AVAudioPCMBuffer]) {
+        ambientPlayer = ambient
+        battlePlayer = battle
+        eventBuffers = buffers
+        isReady = true
+        if startRequested {
+            startRequested = false
+            start()
+        }
     }
 
     // MARK: - Public — ambient/combat
 
     func start() {
-        guard !isPlaying, ambientEnabled, let ambient = ambientPlayer else { return }
+        guard !isPlaying, ambientEnabled else { return }
+        guard isReady, let ambient = ambientPlayer else {
+            startRequested = true
+            return
+        }
         ambient.volume = ambientTargetVolume * chapterBias * ambientVolume
         ambient.play()
         battlePlayer?.volume = 0
@@ -226,23 +285,10 @@ final class AmbientAudio: ObservableObject {
         if !player.isPlaying { player.play() }
     }
 
-    // MARK: - Session
-
-    private func configureAudioSession() {
-        do {
-            let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.ambient, mode: .default, options: [.mixWithOthers])
-            try session.setActive(true)
-        } catch {
-            #if DEBUG
-            print("[AmbientAudio] session error: \(error)")
-            #endif
-        }
-    }
 
     // MARK: - Chargement des musiques
 
-    private static func makeLoopingPlayer(named name: String) -> AVAudioPlayer? {
+    nonisolated private static func makeLoopingPlayer(named name: String) -> AVAudioPlayer? {
         guard let url = Bundle.main.url(forResource: name, withExtension: "m4a") else {
             return nil
         }
@@ -260,7 +306,7 @@ final class AmbientAudio: ObservableObject {
         }
     }
 
-    private static func makeProceduralDronePlayer() -> AVAudioPlayer? {
+    nonisolated private static func makeProceduralDronePlayer() -> AVAudioPlayer? {
         guard let buffer = makeProceduralDrone(format: mixFormat, seconds: 8) else {
             return nil
         }
@@ -285,7 +331,7 @@ final class AmbientAudio: ObservableObject {
 
     // MARK: - Chargement des effets courts
 
-    private static func loadBundleBuffer(_ name: String) -> AVAudioPCMBuffer? {
+    nonisolated private static func loadBundleBuffer(_ name: String) -> AVAudioPCMBuffer? {
         guard let url = Bundle.main.url(forResource: name, withExtension: "m4a") else {
             return nil
         }
@@ -312,7 +358,7 @@ final class AmbientAudio: ObservableObject {
         return convert(buffer: buffer, to: mixFormat)
     }
 
-    private static func convert(buffer: AVAudioPCMBuffer,
+    nonisolated private static func convert(buffer: AVAudioPCMBuffer,
                                  to target: AVAudioFormat) -> AVAudioPCMBuffer? {
         guard let converter = AVAudioConverter(from: buffer.format, to: target) else {
             return nil
@@ -339,7 +385,7 @@ final class AmbientAudio: ObservableObject {
 
     // MARK: - Drone synthétique de fallback
 
-    private static func makeProceduralDrone(format: AVAudioFormat,
+    nonisolated private static func makeProceduralDrone(format: AVAudioFormat,
                                              seconds: Double) -> AVAudioPCMBuffer? {
         let sampleRate = format.sampleRate
         let frameCount = Int(sampleRate * seconds)

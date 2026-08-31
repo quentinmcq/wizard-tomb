@@ -1,7 +1,7 @@
 @preconcurrency import AVFoundation
 import Foundation
 
-enum SoundEvent: CaseIterable {
+nonisolated enum SoundEvent: CaseIterable {
     case gainItem
     case heal
     case hitDealt
@@ -18,7 +18,7 @@ enum SoundEvent: CaseIterable {
     case epitaph
 }
 
-enum SoundSynth {
+nonisolated enum SoundSynth {
     static func buffer(for event: SoundEvent,
                        format: AVAudioFormat) -> AVAudioPCMBuffer? {
         switch event {
