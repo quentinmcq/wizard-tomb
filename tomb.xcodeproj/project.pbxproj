@@ -482,7 +482,7 @@
 			repositoryURL = "https://github.com/maartene/InkSwift";
 			requirement = {
 				kind = upToNextMajorVersion;
-				minimumVersion = 2.0.0;
+				minimumVersion = 2.2.2;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */
